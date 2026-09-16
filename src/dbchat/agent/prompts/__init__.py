@@ -10,6 +10,7 @@
 """
 
 from dbchat.agent.prompts.agents import (
+    RETRY_STRUCTURE_NOTE,
     build_analysis_history_block,
     build_analysis_prompt,
     build_analysis_user_message,
@@ -25,6 +26,7 @@ from dbchat.agent.prompts.agents import (
 from dbchat.agent.prompts.schema import build_schema_context, extract_table_refs
 
 __all__ = [
+    "RETRY_STRUCTURE_NOTE",
     "build_analysis_history_block",
     "build_analysis_prompt",
     "build_analysis_user_message",

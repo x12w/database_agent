@@ -19,6 +19,7 @@ from dbchat.domain.query import Artifact, QueryResult
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "RETRY_STRUCTURE_NOTE",
     "build_analysis_history_block",
     "build_analysis_prompt",
     "build_analysis_user_message",
@@ -35,6 +36,21 @@ __all__ = [
 _CJK_FONT = "Sarasa Gothic SC"
 #: 进入用户消息的历史条数上限（分析 agent 的 Q/A 摘要用）。
 _HISTORY_ASSISTANT_TRUNCATE = 200
+#: 带进重试轮的"上一轮结论"上限（查询计划通常几百字，2000 足够）。
+_PRIOR_FINDINGS_CHARS = 2000
+
+#: 重试轮的结构说明。**不是**禁用工具（丢了上下文的 agent 仍然要能去看），
+#: 而是明确告诉它：结构在上轮已经确认过，别再从零探索一遍。
+#: 背景：`empty_result` 用例 5 轮里跑了 21 次结构类调用，其中每轮的
+#: `get_schema_summary` + `describe_table` + `analyze_column` 组合完全一致。
+RETRY_STRUCTURE_NOTE = (
+    "本轮是重试轮：表结构、列含义与样本值都已在上一轮确认过"
+    "（见下方「上一轮已确认的结论」）。\n"
+    "**不要重复调用 get_schema_summary / list_tables / describe_table / "
+    "get_table_detail / analyze_column 重新确认同一批表**；\n"
+    "只有上一轮结论中确实缺失的表或列，才做**一次**针对性的查看。"
+    "请直接针对 [上轮提示] 修正查询口径。"
+)
 
 
 def _dialect_notes(dialect: Dialect | None, limit: int = 4) -> str:
@@ -144,8 +160,15 @@ def build_analysis_user_message(
     *,
     history_block: str = "",
     rag_context: str = "",
+    prior_findings: str = "",
+    retry: bool = False,
 ) -> str:
-    """分析 agent 的用户消息（问题 + 历史 + RAG 上下文）。"""
+    """分析 agent 的用户消息（问题 + 历史 + RAG 上下文 + 重试轮的既有结论）。
+
+    `retry=True` 时带上上一轮的结论，并说明结构已经确认过 —— 每轮都从头
+    重跑一遍 `get_schema_summary` / `describe_table` / `analyze_column`
+    是纯浪费（用例层不再给重试轮开一份全新的空白分析 agent）。
+    """
     message = f"请分析以下用户问题，探索相关数据库结构，并生成查询计划：\n\n**用户问题**: {question}\n\n"
     if history_block:
         message += (
@@ -158,6 +181,18 @@ def build_analysis_user_message(
             f"{rag_context}\n\n"
             "请优先使用以上知识库内容来理解列含义和编码值映射。\n\n"
         )
+    if retry:
+        if prior_findings:
+            message += (
+                "## 上一轮已确认的结论（本轮不要重复确认）\n"
+                f"{prior_findings[:_PRIOR_FINDINGS_CHARS]}\n\n"
+            )
+        message += f"{RETRY_STRUCTURE_NOTE}\n\n"
+        message += (
+            "最终计划放在 ```plan 代码块中，"
+            "只需要给出**修正后的**查询步骤，不必重述整个数据库结构。"
+        )
+        return message
     message += (
         "请快速完成分析：概览 → 深入 2-3 张相关表 → 立即输出计划。"
         "最终计划放在 ```plan 代码块中。"

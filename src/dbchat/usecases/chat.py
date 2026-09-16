@@ -305,7 +305,13 @@ class ChatPipeline:
 
             # ---- 分析（首轮；简单问题跳过）----
             if not simple:
-                question = effective if query_round == 1 else f"{effective}\n\n[上轮提示] {hint}"
+                # 缺陷修复 C：重试轮不再是一份空白的分析 agent —— 把上一轮
+                # 已经得到的结论（查询计划里的"数据库认识/列名推断"）带过去，
+                # 并说明结构已确认，避免每轮重跑一遍 get_schema_summary +
+                # describe_table + analyze_column（empty_result 用例里这些
+                # 调用在 5 轮中一字不差地重复了 5 遍）。
+                retry = query_round > 1
+                question = f"{effective}\n\n[上轮提示] {hint}" if retry else effective
                 spec = analysis_spec(settings, run.dialect, self._registry)
                 analysis_messages = [
                     user_message(
@@ -313,6 +319,8 @@ class ChatPipeline:
                             question,
                             history_block=build_analysis_history_block(ctx.history),
                             rag_context=await self._rag_context(question),
+                            prior_findings=plan if retry else "",
+                            retry=retry,
                         )
                     )
                 ]

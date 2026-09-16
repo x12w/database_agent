@@ -817,6 +817,102 @@ async def test_pipeline_structure_fast_path_skips_the_model() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retry_round_carries_prior_findings_into_analysis() -> None:
+    """缺陷 C：重试轮的分析 agent 带着上一轮的结论，而不是从零再探一遍结构。
+
+    背景（`tests/golden-new/empty_result.jsonl`）：用例层每轮都新建一份空白
+    分析 agent，`get_schema_summary` + `describe_table` + `analyze_column`
+    在 5 轮里一字不差地重复了 5 遍。这里验证第二轮的分析消息里确实带上了
+    首轮的查询计划，并且明确说明结构已确认。
+    """
+    from dataclasses import replace
+
+    from dbchat.agent.prompts import RETRY_STRUCTURE_NOTE
+    from dbchat.domain.query import QueryResult
+    from dbchat.events.chat import RunFinished
+    from dbchat.tools import build_registry
+    from dbchat.usecases.chat import ChatPipeline
+
+    seen = {"queries": 0}
+
+    async def _empty_then_rows(params: Any, ctx: Any) -> ToolOutcome:
+        """首轮返回空结果（触发重试），其后返回 4 行（让评估收尾）。"""
+        seen["queries"] += 1
+        rows = 0 if seen["queries"] == 1 else 4
+        ctx.ctx.add_query_result(
+            QueryResult(
+                sql=params.sql,
+                columns=["cnt"],
+                rows=[{"cnt": 4}] * rows,
+                row_count=rows,
+                execution_ms=1,
+            )
+        )
+        return ToolOutcome(
+            ok=True,
+            summary=f"返回 {rows} 行",
+            content=f"查询返回 {rows} 行",
+            payload={"sql": params.sql, "row_count": rows, "execution_ms": 1},
+        )
+
+    real = build_registry(Settings())
+    specs = [
+        replace(real.require(name), handler=_empty_then_rows)
+        if name == "query_database"
+        else real.require(name)
+        for name in real.names
+    ]
+
+    plan_first = "```plan\n## 数据库认识\n- employee 表 13 列，employee_name 有样本值「张三」\n```"
+    llm = ScriptedLLM(
+        [
+            [LlmTextDelta(plan_first), Done(STOP_END_TURN)],
+            [_tool_use("q1", "query_database", sql="SELECT COUNT(*) FROM employee"), Done(STOP_TOOL_USE)],
+            [LlmTextDelta("已执行查询"), Done(STOP_END_TURN)],
+            [LlmTextDelta("```plan\n步骤一（修正后）\n```"), Done(STOP_END_TURN)],
+            [_tool_use("q2", "query_database", sql="SELECT COUNT(*) FROM employee"), Done(STOP_TOOL_USE)],
+            [LlmTextDelta("已执行查询"), Done(STOP_END_TURN)],
+            [LlmTextDelta("共 4 人。"), Done(STOP_END_TURN)],
+        ],
+        # 第 1 轮空结果走确定性分支（不问模型），第 2 轮才有评估调用。
+        replies=["SATISFIED", "SKIP"],
+    )
+    pipeline = ChatPipeline(
+        settings=Settings(llm_api_key="test-key"),
+        llm=llm,
+        registry=ToolRegistry(specs),
+        explorations=_FakeExplorations(),
+    )
+    ctx, _ = _context()
+    ctx.snapshot = _snapshot()
+
+    events = [event async for event in pipeline.run(message="统计每个部门的人数", ctx=ctx)]
+    assert isinstance(events[-1], RunFinished)
+    assert seen["queries"] == 2  # 真的跑到第二轮
+
+    def _user_text(call: dict) -> str:
+        return "\n".join(m.text for m in call["messages"] if getattr(m, "role", "") == "user")
+
+    analysis_calls = [call for call in llm.calls if "请分析以下用户问题" in _user_text(call)]
+    assert len(analysis_calls) == 2
+
+    first, second = (_user_text(call) for call in analysis_calls)
+    # 首轮照旧：完整探索
+    assert "上一轮已确认的结论" not in first
+    assert RETRY_STRUCTURE_NOTE not in first
+    # 重试轮：带上上轮结论 + 结构已确认的说明 + 上轮提示
+    assert "上一轮已确认的结论" in second
+    assert "employee_name 有样本值「张三」" in second
+    assert RETRY_STRUCTURE_NOTE in second
+    assert "不要重复调用 get_schema_summary" in second
+    assert "[上轮提示]" in second
+    # 但工具没有被禁用 —— 丢了上下文的 agent 仍然能去看
+    analysis_tools = [tool["name"] for tool in analysis_calls[1]["tools"]]
+    assert "get_schema_summary" in analysis_tools
+    assert "analyze_column" in analysis_tools
+
+
+@pytest.mark.asyncio
 async def test_pipeline_answer_agent_failure_maps_to_llm_failed() -> None:
     """回答 agent 挂掉 → 线上错误码是 `llm_failed`（不是兜底的 `internal`）。"""
     from dbchat.events.base import ErrorCode

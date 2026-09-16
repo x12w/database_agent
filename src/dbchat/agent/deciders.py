@@ -18,11 +18,25 @@ agent 每轮只调 `get_schema_summary`，评估器却一直提示"查询未返�
 
 * 没查过 → 提示"你还没有执行任何查询，请用 query_database 查询"；
 * 查了但为空 → 提示换口径（换条件/换列/换表），不要重复确认结构。
+
+**缺陷修复（评估不认"没有"这个答案）**：分支二曾经无条件要求重试，于是
+"有没有叫张三丰的员工参加过考试？"这种**是非问句**被烧掉 4 轮 / 173 秒 ——
+一条正确靶向的查询返回 0 行，0 行本身就是答案。现在先判问题形状
+（`is_boolean_question`）：是非问句的空结果按"没有匹配数据"直接收下；
+计数/列表/统计类问题的空结果仍然重试（那是真的没查到）。
+
+**缺陷修复（重试理由自相矛盾）**：评估器只认同一个前缀 ——
+`deciders.py:180` 判断 `startswith("RETRY:")` 后把剩余文本原样当建议，
+于是 `RETRY: 查询已返回各考试平均分`（`chart` 用例第 2 轮的原文）也照单
+全收，白烧一整轮（约 50 秒）。现在解析容忍 JSON / 前缀两种形状，
+并在"重试建议里没有任何可执行改动"时按已充分处理。
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -34,6 +48,7 @@ __all__ = [
     "ComputationPlan",
     "Evaluation",
     "evaluate_results",
+    "is_boolean_question",
     "plan_computation",
 ]
 
@@ -43,7 +58,9 @@ logger = logging.getLogger(__name__)
 _DECIDE_MAX_TOKENS = 200
 _PLAN_MAX_TOKENS = 150
 
-_EVALUATOR_SYSTEM = "You are a query result evaluator. Respond with one line."
+_EVALUATOR_SYSTEM = (
+    "You are a query result evaluator. Reply with one JSON object and nothing else."
+)
 _PLANNER_SYSTEM = "You are a computation and visualization planner. Respond with exactly one line."
 
 #: 一句"没查过"的提示 —— 必须与"查了但为空"区分开。
@@ -56,10 +73,59 @@ EMPTY_RESULT_HINT = (
     "查询执行了，但没有匹配的数据。请检查 WHERE 条件是否过严（例如编码值写错、"
     "时间范围不对），或换一个列/表来表达同一个意思；不要重复确认表结构。"
 )
+#: 是非问句的空结果 —— 这是**答案**，不是失败。措辞必须让用户看得懂。
+NO_MATCH_REASON = "没有匹配的数据 —— 「有没有」这类是非问题的答案就是：没有"
 
 #: 关键词兜底（模型不可用或答非所问时用）。
 _COMPUTE_KEYWORDS = ("平均", "率", "占比", "统计", "计算", "排名", "对比", "比率")
 _CHART_KEYWORDS = ("图表", "图", "柱状图", "饼图", "折线图", "可视化", "趋势", "分布")
+
+#: 是非问句的标志词（词汇取自 `app/agent/router.py:95` 的旧表 + 常见变体）。
+_BOOLEAN_PATTERNS: tuple[str, ...] = (
+    "有没有", "有没", "是否有", "是否", "是不是", "存在吗", "有吗",
+)
+#: 句尾的"吗"也是是非问句的强信号（"张三丰参加过考试吗？"）。
+_QUESTION_TAIL = " \t\r\n？?。.！!"
+#: 出现这些词就不是是非问句 —— "能帮我查一下有多少人吗？"是计数问题，
+#: 0 行说明真没查到，不能因为句尾有个"吗"就收下。
+_COUNT_PATTERNS: tuple[str, ...] = (
+    "多少", "几个", "几名", "几张", "几条", "几号", "数量", "总数",
+    "统计", "列出", "分别", "名单", "排名", "排序", "平均", "占比",
+)
+
+#: 重试建议里出现这些词，说明它给出了**可执行的改动**。
+_DIRECTIVE_MARKERS: tuple[str, ...] = (
+    "请", "建议", "需要", "需", "应该", "应", "必须", "改用", "换成", "换用",
+    "改为", "替换", "尝试", "添加", "加上", "增加", "补充", "去掉", "删除",
+    "过滤", "筛选", "限定", "关联", "联查", "使用", "针对", "重新", "检查",
+    "核对", "明确", "区分", "按", "条件", "限制", "精确",
+    "join", "where", "count", "group", "limit",
+)
+#: "已经成功了"式的措辞 —— 这种话不构成重试理由。
+_SUCCESS_MARKERS: tuple[str, ...] = (
+    "已返回", "已经返回", "已成功", "已查到", "已获得", "已完成", "已经完成",
+    "已满足", "无需重试", "不需要重试", "已经得到", "已提供", "已充分",
+    "已经回答", "已能回答", "结果已", "查询已返回",
+)
+
+
+def is_boolean_question(question: str) -> bool:
+    """是否是一个"是/否"型（存在性）问题 —— 0 行就是答案。
+
+    与 `classifier.is_existence_question` 的区别：后者把"哪些/谁"这类
+    **列举**也算进去（那是分类用的，宽松无妨）。评估分支要收下空结果，
+    必须更窄 —— "哪些员工没参加考试？"返回 0 行时更有可能是查错了。
+
+    计数/统计类问题即使带疑问词尾（"有多少人吗？"）也不算是非问句。
+    """
+    text = (question or "").strip()
+    if not text:
+        return False
+    if any(pattern in text for pattern in _COUNT_PATTERNS):
+        return False
+    if any(pattern in text for pattern in _BOOLEAN_PATTERNS):
+        return True
+    return text.rstrip(_QUESTION_TAIL).endswith("吗")
 
 
 @dataclass(slots=True, frozen=True)
@@ -125,6 +191,15 @@ async def evaluate_results(
 
     # ---- 分支二：查过，但结果为空 ----
     if not results or _total_rows(results) == 0:
+        # 是非问句的 0 行**就是答案**（"有没有叫张三丰的员工参加过考试？"）。
+        # 计数/列表/统计类问题不走这条：它们返回 0 行说明口径错了，必须重试。
+        if is_boolean_question(question):
+            logger.info("是非问句返回 0 行，按「没有匹配数据」收下: %s", question[:60])
+            return Evaluation(
+                satisfactory=True,
+                reason=NO_MATCH_REASON,
+                ran_query=True,
+            )
         return Evaluation(
             satisfactory=False,
             reason="查询执行了，但没有返回数据",
@@ -139,18 +214,23 @@ async def evaluate_results(
             ran_query=True,
         )
 
+    boolean = is_boolean_question(question)
     prompt = (
         "判断以下查询结果是否已经充分回答了用户问题。\n\n"
         "评估标准：\n"
-        "1. 结果完整回答了用户问题（数量、统计、列表等都已提供）→ SATISFIED\n"
-        "2. 结果为空、不完整、仅采样未聚合、或含糊其辞（如「无法确认」）→ RETRY\n"
-        "3. 重试建议必须具体：指出缺少什么信息，建议查询哪些表/列，用什么条件\n\n"
+        "1. 结果完整回答了用户问题（数量、统计、列表等都已提供）→ satisfied=true\n"
+        "2. 结果为空、不完整、仅采样未聚合、或含糊其辞（如「无法确认」）→ satisfied=false\n"
+        "3. satisfied=false 时，hint 必须给出具体改动：缺少什么信息，"
+        "查哪些表/列，用什么条件；**只描述现状、没有给出改动的不是 hint**\n\n"
         "核心原则：结果必须能直接回答用户问题才算充分，否则就重试。\n"
         "注意：查询已经执行过了（不是没查），所以重试建议应当针对查询口径，"
         "而不是要求再次确认表结构。\n\n"
-        f"用户问题: {question}\n\n"
+        f"用户问题: {question}\n"
+        f"问题类型: {'是非/存在性 —— 答案可以是「没有」' if boolean else '数据/统计'}\n\n"
         "查询结果:\n" + "\n".join(_summarize(results)) + "\n\n"
-        "只回复一行：SATISFIED 或 RETRY: <基于数据库内容的改进建议>"
+        "只回复一个 JSON 对象，不要输出其他任何内容：\n"
+        '{"satisfied": true|false, "reason": "<一句话结论>", '
+        '"hint": "<satisfied=false 时的具体改进建议；true 时留空>"}'
     )
 
     try:
@@ -170,29 +250,115 @@ async def evaluate_results(
             ran_query=True,
         )
 
-    upper = text.upper()
-    if upper.startswith("SATISFIED"):
+    verdict = _parse_verdict(text)
+    if verdict is None:
+        # 答非所问：有数据就算充分（历史行为如此）。
+        logger.info("评估器返回了无法解析的内容: %r", text[:120])
         return Evaluation(
             satisfactory=True,
             reason=f"共 {_total_rows(results)} 条结果",
             ran_query=True,
         )
-    if upper.startswith("RETRY:"):
-        hint = text[6:].strip() or EMPTY_RESULT_HINT
+
+    satisfied, model_reason, hint = verdict
+    if satisfied:
         return Evaluation(
-            satisfactory=False,
-            reason="模型判定结果不充分",
-            hint=hint,
+            satisfactory=True,
+            reason=model_reason or f"共 {_total_rows(results)} 条结果",
             ran_query=True,
         )
 
-    # 答非所问：有数据就算充分（历史行为如此）。
-    logger.info("评估器返回了无法解析的内容: %r", text[:120])
+    # ---- 缺陷修复 B：重试判定必须与它自己的理由一致 ----
+    # `RETRY: 查询已返回各考试平均分` 这种"重试前缀 + 成功陈述"的回复，
+    # 照单全收会白烧一整轮；理由是"已经查到了"或没给出任何改动时按已充分处理。
+    if _reads_as_success(hint) or not _retry_hint_is_actionable(hint):
+        logger.info("评估器给了 RETRY 但理由不可执行（%r），按已充分处理", hint[:120])
+        return Evaluation(
+            satisfactory=True,
+            reason=f"共 {_total_rows(results)} 条结果",
+            ran_query=True,
+        )
     return Evaluation(
-        satisfactory=True,
-        reason=f"共 {_total_rows(results)} 条结果",
+        satisfactory=False,
+        reason=model_reason or "模型判定结果不充分",
+        hint=hint,
         ran_query=True,
     )
+
+
+def _parse_verdict(text: str) -> tuple[bool, str, str] | None:
+    """把评估器的回复解析成 `(satisfied, reason, hint)`；解析不了返回 None。
+
+    容忍两种形状（小模型两种都会给）：
+
+    1. JSON：`{"satisfied": true|false, "reason": "...", "hint": "..."}` —— 首选；
+    2. 历史前缀协议：`SATISFIED` / `RETRY: <建议>` —— 兼容旧提示词与桩客户端。
+
+    判定不再挂在某一个前缀上：前缀只写 `RETRY`（无冒号）、大写小写、
+    或者把 JSON 包在解释文字里，都能解析出来。
+    """
+    payload = _first_json_object(text)
+    if payload is not None:
+        satisfied = _as_bool(payload.get("satisfied"))
+        if satisfied is not None:
+            return (
+                satisfied,
+                str(payload.get("reason") or "").strip(),
+                str(payload.get("hint") or "").strip(),
+            )
+
+    upper = text.upper().lstrip()
+    if upper.startswith("SATISFIED"):
+        return True, "", ""
+    if upper.startswith("RETRY"):
+        return False, "", text.lstrip()[5:].lstrip(":： \t").strip()
+    return None
+
+
+def _first_json_object(text: str) -> dict | None:
+    """从回复里抠出第一个 JSON 对象（允许前后有解释文字）。"""
+    for pattern in (r"\{[^{}]*\}", r"\{.*\}"):
+        match = re.search(pattern, text, re.DOTALL)
+        if match is None:
+            continue
+        try:
+            payload = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def _as_bool(value: object) -> bool | None:
+    """宽松地把模型给的布尔值解析出来。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "yes", "y", "1", "是", "充分", "satisfied"):
+            return True
+        if lowered in ("false", "no", "n", "0", "否", "不充分", "retry"):
+            return False
+    return None
+
+
+def _reads_as_success(hint: str) -> bool:
+    """重试理由是不是在陈述"已经查到了"。"""
+    return any(marker in hint for marker in _SUCCESS_MARKERS)
+
+
+def _retry_hint_is_actionable(hint: str) -> bool:
+    """重试理由里是否含有**可执行的改动**。
+
+    空建议、纯现状描述（"查询已返回各考试平均分"）都不算 —— 这类回复
+    只会让下一轮重复同一件事。
+    """
+    text = hint.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(marker in lowered for marker in _DIRECTIVE_MARKERS)
 
 
 async def plan_computation(

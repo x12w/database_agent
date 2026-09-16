@@ -11,9 +11,10 @@ orchestrator.py 中，同一份列表查询 SQL 有四份副本。
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Protocol
 
 from dbchat.domain.errors import DbErrorKind
 from dbchat.domain.profile import DatabaseProfile, DialectKind

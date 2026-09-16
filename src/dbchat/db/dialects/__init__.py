@@ -11,19 +11,17 @@
 
 from __future__ import annotations
 
-from typing import Callable, TypeVar
+from collections.abc import Callable
 
+from dbchat.db.dialects.base import Dialect
 from dbchat.domain.errors import DbError, DbErrorKind
 from dbchat.domain.profile import DialectKind
-from dbchat.db.dialects.base import Dialect
 
 _REGISTRY: dict[DialectKind, Dialect] = {}
 _PENDING: dict[DialectKind, type[Dialect]] = {}
 
-T = TypeVar("T", bound=Dialect)
 
-
-def register_dialect(cls: type[T]) -> type[T]:
+def register_dialect[T: Dialect](cls: type[T]) -> type[T]:
     """类装饰器：注册一个方言实现（惰性实例化）。"""
     kind = getattr(cls, "kind", None)
     if kind is None:
@@ -89,9 +87,9 @@ def _load_builtin() -> None:
         return
     _builtin_loaded = True
 
+    from dbchat.db.dialects import dameng as _dm  # noqa: F401
     from dbchat.db.dialects import mysql as _mysql  # noqa: F401
     from dbchat.db.dialects import postgres as _pg  # noqa: F401
-    from dbchat.db.dialects import dameng as _dm  # noqa: F401
 
 
 __all__ = ["Dialect", "get_dialect", "register_dialect", "registered_kinds"]

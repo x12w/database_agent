@@ -10,7 +10,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dbchat.domain.profile import DatabaseProfile, DialectKind, parse_dialect_kind
@@ -98,6 +98,15 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_chunk_size: int = 800
     rag_chunk_overlap: int = 100
+    #: 基础文档语料（数据库结构说明与业务说明），随仓库分发。
+    rag_doc_path: Path = PROJECT_ROOT / "training_exam_db_rag.md"
+    rag_structure_doc_path: Path = PROJECT_ROOT / "training_exam_db_structure.md"
+    #: 首次构建索引的预算。加载嵌入模型 + 编码整份语料可能很慢。
+    rag_build_timeout_s: int = 300
+
+    # ---- SQLite ----
+    #: 写锁等待上限。WAL 模式下读写不互斥，但写写仍会排队。
+    sqlite_busy_timeout_ms: int = 5000
 
     @field_validator("var_dir", "web_dist_dir", mode="after")
     @classmethod

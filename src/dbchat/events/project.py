@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from dbchat.domain.errors import DB_ERROR_MESSAGES, DbErrorKind
 from dbchat.events.agent import (
     AdminQuestionRaised,
     AgentEvent,
@@ -28,7 +29,6 @@ from dbchat.events.chat import (
     RunFailed,
     ThoughtDelta,
 )
-from dbchat.domain.errors import DB_ERROR_MESSAGES, DbErrorKind
 
 #: 工具内部名 → (动作类别, 展示用目标描述函数)。
 #:

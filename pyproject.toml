@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dbchat"
+version = "0.1.0"
+description = "自然语言数据库查询 Agent —— 支持 MySQL / PostgreSQL / 达梦"
+readme = "README.md"
+
+# 3.13 是硬下限也是硬上限：dmPython 只发布了 cp313 的 ABI wheel，
+# 放宽到 3.14 会让国产数据库能力直接消失。
+requires-python = ">=3.13,<3.14"
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "python-dotenv>=1.0",
+    "anyio>=4.6",
+    "httpx>=0.28",
+    "sqlglot>=26.0",
+    # LLM
+    "anthropic>=0.49",
+    "openai>=1.0",
+    # 数据库驱动
+    "pymysql>=1.1",
+    "psycopg2-binary>=2.9",
+    "dmPython>=2.5",
+    # RAG
+    "sentence-transformers>=3.4",
+    "faiss-cpu>=1.9",
+    "jieba>=0.42",
+    # 计算与图表
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[project.scripts]
+dbchat = "dbchat.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dbchat"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle / pyflakes
+    "I",             # isort
+    "UP",            # pyupgrade
+    "B",             # bugbear
+    "SIM",           # simplify
+    "RET",           # return
+    "BLE",           # blind except —— 本项目历史上吞掉了太多异常
+    "ASYNC",         # blocking calls in async functions
+]
+ignore = [
+    "E501",    # 行长由 formatter 决定
+    "BLE001",  # 允许 `except Exception`，但必须 log（见下方约定）
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["BLE001", "S101"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = [
+    "live_mysql: 需要本机 MySQL (3307/3308) 在线",
+    "live_pg: 需要本机 PostgreSQL (5433) 在线",
+    "live_dm: 需要本机达梦 (5237) 在线；驱动不可用时必须显式 skip，不得静默通过",
+    "llm: 需要真实 LLM API key",
+]
+
+[tool.mypy]
+python_version = "3.13"
+packages = ["dbchat"]
+mypy_path = "src"
+ignore_missing_imports = true
+warn_unused_ignores = true

@@ -3,8 +3,8 @@
 用中文提问，Agent 自主探索数据库、生成并执行 SQL、必要时计算与绘图，最后用自然语言回答。
 支持 **MySQL / PostgreSQL / 达梦(Dameng)**，并预留了人大金仓、openGauss、OceanBase 的接入点。
 
-> 当前状态：正在从 v3（单体 `app/` 目录）重构为 v4（`src/dbchat/` 分层包 + `web/` 前端）。
-> 重构前的完整快照保存在 git tag `baseline`。
+> 当前状态：v4 重构已完成。旧实现的完整快照保存在 git tag `baseline`，
+> 可随时 `git diff baseline` 对照。
 
 ## 快速开始
 
@@ -71,3 +71,15 @@ ruff check src tests
 
 `data/` 与 `var/` 下的运行时状态不进版本控制，其中 `profiles.json` 含明文密码，
 仓库里只保留脱敏的 `data/profiles.example.json`。
+
+## 工具
+
+| 脚本 | 用途 |
+| --- | --- |
+| `tools/capture_baseline.py` | 抓取一组标准问题的完整 SSE 事件流（`--path` 指定端点） |
+| `tools/compare_runs.py` | 对比两次采集 —— 能同时读新旧两套事件契约 |
+| `tools/browser_check.mjs` | 用 CDP 驱动真实浏览器走完一次提问，验证界面端到端可用 |
+| `tools/probe_stream.mjs` | 在浏览器里直连 SSE，隔离"后端没发"与"前端没解析" |
+
+`tests/golden/` 是重构前的行为基线，`tests/golden/README.md` 记录了它的覆盖范围
+与已知局限（它是"旧行为"的记录，不是"正确行为"的标杆）。

@@ -1,0 +1,15 @@
+{
+  "event_counts": {
+    "run.started": 1,
+    "stage.started": 3,
+    "stage.finished": 3,
+    "activity.started": 31,
+    "activity.finished": 31,
+    "stage.retried": 4,
+    "answer.delta": 8,
+    "run.finished": 1
+  },
+  "sql": [],
+  "tools": [],
+  "answer": ""
+}

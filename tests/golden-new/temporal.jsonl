@@ -1,0 +1,120 @@
+{"event": "run.started", "data": {"seq": 1, "ts": 1789558339.2384143, "run_id": "a12c636f0322", "type": "run.started", "profile": {"id": "1da18658", "name": "training_exam_db", "dialect_label": "MySQL"}, "stages": [{"stage": "understanding", "label": "理解问题"}, {"stage": "querying", "label": "查询数据"}, {"stage": "computing", "label": "进行计算"}, {"stage": "visualizing", "label": "生成图表"}, {"stage": "answering", "label": "组织回答"}], "will_load_schema": true}}
+{"event": "stage.started", "data": {"seq": 2, "ts": 1789558339.2384608, "run_id": "a12c636f0322", "type": "stage.started", "stage": "understanding", "label": "理解问题", "index": 1, "total": 5, "detail": "加载数据库结构并分析问题"}}
+{"event": "stage.finished", "data": {"seq": 3, "ts": 1789558339.2392821, "run_id": "a12c636f0322", "type": "stage.finished", "stage": "understanding", "ok": true, "summary": "6 张表", "elapsed_ms": 0}}
+{"event": "stage.started", "data": {"seq": 4, "ts": 1789558339.2397, "run_id": "a12c636f0322", "type": "stage.started", "stage": "querying", "label": "查询数据", "index": 2, "total": 5, "detail": "最多 5 轮迭代"}}
+{"event": "activity.started", "data": {"seq": 5, "ts": 1789558340.7908452, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_bmgye380", "kind": "schema", "label": "正在查看表结构", "target": null}}
+{"event": "activity.finished", "data": {"seq": 6, "ts": 1789558340.7913046, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_bmgye380", "ok": true, "summary": "6 张表的结构概览", "row_count": 6, "elapsed_ms": null, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "activity.started", "data": {"seq": 7, "ts": 1789558343.2504425, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_c8c3vr5g", "kind": "schema", "label": "正在查看表结构", "target": "training_session"}}
+{"event": "activity.started", "data": {"seq": 8, "ts": 1789558343.2504852, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_ri91rvky", "kind": "schema", "label": "正在查看表结构", "target": "training_course"}}
+{"event": "activity.finished", "data": {"seq": 9, "ts": 1789558343.250826, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_c8c3vr5g", "ok": true, "summary": "training_session: 19 列", "row_count": 19, "elapsed_ms": null, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "activity.finished", "data": {"seq": 10, "ts": 1789558343.2508497, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_ri91rvky", "ok": true, "summary": "training_course: 10 列", "row_count": 10, "elapsed_ms": null, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "activity.started", "data": {"seq": 11, "ts": 1789558346.4547718, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_0k4knnyi", "kind": "schema", "label": "正在查看表结构", "target": "training_session"}}
+{"event": "activity.started", "data": {"seq": 12, "ts": 1789558346.4548135, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_mb60pbp3", "kind": "schema", "label": "正在查看表结构", "target": "training_session"}}
+{"event": "activity.finished", "data": {"seq": 13, "ts": 1789558346.4722283, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_0k4knnyi", "ok": true, "summary": "training_session.training_year 分析完成", "row_count": null, "elapsed_ms": null, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "activity.finished", "data": {"seq": 14, "ts": 1789558346.4722712, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_mb60pbp3", "ok": true, "summary": "training_session.start_date 分析完成", "row_count": null, "elapsed_ms": null, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "activity.started", "data": {"seq": 15, "ts": 1789558357.0908685, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_p3rozuk8", "kind": "query", "label": "正在查询数据", "target": null}}
+{"event": "activity.finished", "data": {"seq": 16, "ts": 1789558357.115864, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_p3rozuk8", "ok": true, "summary": "查询成功，没有匹配的数据", "row_count": 0, "elapsed_ms": 22, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "activity.started", "data": {"seq": 17, "ts": 1789558361.7295911, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_ki4cuosh", "kind": "query", "label": "正在查询数据", "target": null}}
+{"event": "activity.started", "data": {"seq": 18, "ts": 1789558361.7296302, "run_id": "a12c636f0322", "type": "activity.started", "activity_id": "call_51bifonj", "kind": "query", "label": "正在查询数据", "target": null}}
+{"event": "activity.finished", "data": {"seq": 19, "ts": 1789558361.7351356, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_ki4cuosh", "ok": true, "summary": "返回 3 行", "row_count": 3, "elapsed_ms": 0, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "activity.finished", "data": {"seq": 20, "ts": 1789558361.7351701, "run_id": "a12c636f0322", "type": "activity.finished", "activity_id": "call_51bifonj", "ok": true, "summary": "返回 6 行", "row_count": 6, "elapsed_ms": 0, "sql_preview": null, "error_detail": "", "artifact_ids": []}}
+{"event": "stage.finished", "data": {"seq": 21, "ts": 1789558369.620358, "run_id": "a12c636f0322", "type": "stage.finished", "stage": "querying", "ok": true, "summary": "共 9 条结果", "elapsed_ms": 30380}}
+{"event": "stage.started", "data": {"seq": 22, "ts": 1789558372.2318087, "run_id": "a12c636f0322", "type": "stage.started", "stage": "answering", "label": "组织回答", "index": 5, "total": 5, "detail": "生成自然语言回答"}}
+{"event": "answer.delta", "data": {"seq": 23, "ts": 1789558373.668486, "run_id": "a12c636f0322", "type": "answer.delta", "text": "根据数据库"}}
+{"event": "answer.delta", "data": {"seq": 24, "ts": 1789558373.6894972, "run_id": "a12c636f0322", "type": "answer.delta", "text": "记录，2025年（"}}
+{"event": "answer.delta", "data": {"seq": 25, "ts": 1789558373.7044556, "run_id": "a12c636f0322", "type": "answer.delta", "text": "今年）共有"}}
+{"event": "answer.delta", "data": {"seq": 26, "ts": 1789558373.7244163, "run_id": "a12c636f0322", "type": "answer.delta", "text": " **6**"}}
+{"event": "answer.delta", "data": {"seq": 27, "ts": 1789558373.7424614, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 场培训，"}}
+{"event": "answer.delta", "data": {"seq": 28, "ts": 1789558373.7634964, "run_id": "a12c636f0322", "type": "answer.delta", "text": "具体场"}}
+{"event": "answer.delta", "data": {"seq": 29, "ts": 1789558373.768369, "run_id": "a12c636f0322", "type": "answer.delta", "text": "次如下：\n\n1. **"}}
+{"event": "answer.delta", "data": {"seq": 30, "ts": 1789558373.7864797, "run_id": "a12c636f0322", "type": "answer.delta", "text": "2025年第一期安全生产基础"}}
+{"event": "answer.delta", "data": {"seq": 31, "ts": 1789558373.8044572, "run_id": "a12c636f0322", "type": "answer.delta", "text": "培训**（编号"}}
+{"event": "answer.delta", "data": {"seq": 32, "ts": 1789558373.8194191, "run_id": "a12c636f0322", "type": "answer.delta", "text": " TS"}}
+{"event": "answer.delta", "data": {"seq": 33, "ts": 1789558373.8474398, "run_id": "a12c636f0322", "type": "answer.delta", "text": "-2025-001）"}}
+{"event": "answer.delta", "data": {"seq": 34, "ts": 1789558373.8574748, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 时间"}}
+{"event": "answer.delta", "data": {"seq": 35, "ts": 1789558373.8704422, "run_id": "a12c636f0322", "type": "answer.delta", "text": "：2025-05-"}}
+{"event": "answer.delta", "data": {"seq": 36, "ts": 1789558373.8905034, "run_id": "a12c636f0322", "type": "answer.delta", "text": "10 至 2025"}}
+{"event": "answer.delta", "data": {"seq": 37, "ts": 1789558373.907497, "run_id": "a12c636f0322", "type": "answer.delta", "text": "-05-11"}}
+{"event": "answer.delta", "data": {"seq": 38, "ts": 1789558373.9224162, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 状态：已结束"}}
+{"event": "answer.delta", "data": {"seq": 39, "ts": 1789558373.9392505, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 讲师："}}
+{"event": "answer.delta", "data": {"seq": 40, "ts": 1789558373.9544463, "run_id": "a12c636f0322", "type": "answer.delta", "text": "李安全  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 41, "ts": 1789558373.9714553, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 组织方"}}
+{"event": "answer.delta", "data": {"seq": 42, "ts": 1789558373.9894352, "run_id": "a12c636f0322", "type": "answer.delta", "text": "：安全管理部  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 43, "ts": 1789558374.0084815, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 地点：公司A"}}
+{"event": "answer.delta", "data": {"seq": 44, "ts": 1789558374.0236096, "run_id": "a12c636f0322", "type": "answer.delta", "text": "栋301会议室  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 45, "ts": 1789558374.040444, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 方式：线下  \n\n2"}}
+{"event": "answer.delta", "data": {"seq": 46, "ts": 1789558374.0591245, "run_id": "a12c636f0322", "type": "answer.delta", "text": ". **2025年第一"}}
+{"event": "answer.delta", "data": {"seq": 47, "ts": 1789558374.0736232, "run_id": "a12c636f0322", "type": "answer.delta", "text": "期中层管理技能"}}
+{"event": "answer.delta", "data": {"seq": 48, "ts": 1789558374.092437, "run_id": "a12c636f0322", "type": "answer.delta", "text": "提升培训**（编号"}}
+{"event": "answer.delta", "data": {"seq": 49, "ts": 1789558374.108459, "run_id": "a12c636f0322", "type": "answer.delta", "text": " TS-2025-002"}}
+{"event": "answer.delta", "data": {"seq": 50, "ts": 1789558374.1244528, "run_id": "a12c636f0322", "type": "answer.delta", "text": "）  \n   - 时间"}}
+{"event": "answer.delta", "data": {"seq": 51, "ts": 1789558374.142458, "run_id": "a12c636f0322", "type": "answer.delta", "text": "：2025-03-"}}
+{"event": "answer.delta", "data": {"seq": 52, "ts": 1789558374.1614208, "run_id": "a12c636f0322", "type": "answer.delta", "text": "01 至 2025"}}
+{"event": "answer.delta", "data": {"seq": 53, "ts": 1789558374.1794212, "run_id": "a12c636f0322", "type": "answer.delta", "text": "-03-04"}}
+{"event": "answer.delta", "data": {"seq": 54, "ts": 1789558374.199625, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 状态：已结束"}}
+{"event": "answer.delta", "data": {"seq": 55, "ts": 1789558374.2135634, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 讲师："}}
+{"event": "answer.delta", "data": {"seq": 56, "ts": 1789558374.2316232, "run_id": "a12c636f0322", "type": "answer.delta", "text": "张管理  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 57, "ts": 1789558374.248581, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 组织方：人力资源部"}}
+{"event": "answer.delta", "data": {"seq": 58, "ts": 1789558374.2684677, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 地点：外部"}}
+{"event": "answer.delta", "data": {"seq": 59, "ts": 1789558374.2824147, "run_id": "a12c636f0322", "type": "answer.delta", "text": "培训中心  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 60, "ts": 1789558374.3064282, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 方式：线下  \n\n3."}}
+{"event": "answer.delta", "data": {"seq": 61, "ts": 1789558374.3195107, "run_id": "a12c636f0322", "type": "answer.delta", "text": " **2025年Python数据分析"}}
+{"event": "answer.delta", "data": {"seq": 62, "ts": 1789558374.3375716, "run_id": "a12c636f0322", "type": "answer.delta", "text": "进阶培训**（编号 TS"}}
+{"event": "answer.delta", "data": {"seq": 63, "ts": 1789558374.3495002, "run_id": "a12c636f0322", "type": "answer.delta", "text": "-2025-003）"}}
+{"event": "answer.delta", "data": {"seq": 64, "ts": 1789558374.3754098, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 时间："}}
+{"event": "answer.delta", "data": {"seq": 65, "ts": 1789558374.382403, "run_id": "a12c636f0322", "type": "answer.delta", "text": "2025-06-01"}}
+{"event": "answer.delta", "data": {"seq": 66, "ts": 1789558374.3994, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 至 2025-"}}
+{"event": "answer.delta", "data": {"seq": 67, "ts": 1789558374.4165535, "run_id": "a12c636f0322", "type": "answer.delta", "text": "06-05  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 68, "ts": 1789558374.431537, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 状态：进行中"}}
+{"event": "answer.delta", "data": {"seq": 69, "ts": 1789558374.449416, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 讲师：陈"}}
+{"event": "answer.delta", "data": {"seq": 70, "ts": 1789558374.4624202, "run_id": "a12c636f0322", "type": "answer.delta", "text": "数据  \n   - 组织"}}
+{"event": "answer.delta", "data": {"seq": 71, "ts": 1789558374.4786549, "run_id": "a12c636f0322", "type": "answer.delta", "text": "方：技术部"}}
+{"event": "answer.delta", "data": {"seq": 72, "ts": 1789558374.4956152, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 地点：公司B"}}
+{"event": "answer.delta", "data": {"seq": 73, "ts": 1789558374.5114272, "run_id": "a12c636f0322", "type": "answer.delta", "text": "栋301机房  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 74, "ts": 1789558375.0376234, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 方式：线上  \n\n4"}}
+{"event": "answer.delta", "data": {"seq": 75, "ts": 1789558375.0377421, "run_id": "a12c636f0322", "type": "answer.delta", "text": ". **2025年网络安全"}}
+{"event": "answer.delta", "data": {"seq": 76, "ts": 1789558375.037875, "run_id": "a12c636f0322", "type": "answer.delta", "text": "意识培训**（编号 TS"}}
+{"event": "answer.delta", "data": {"seq": 77, "ts": 1789558375.0380044, "run_id": "a12c636f0322", "type": "answer.delta", "text": "-2025-004）"}}
+{"event": "answer.delta", "data": {"seq": 78, "ts": 1789558375.0381148, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 时间："}}
+{"event": "answer.delta", "data": {"seq": 79, "ts": 1789558375.0383606, "run_id": "a12c636f0322", "type": "answer.delta", "text": "2025-09-01"}}
+{"event": "answer.delta", "data": {"seq": 80, "ts": 1789558375.0384912, "run_id": "a12c636f0322", "type": "answer.delta", "text": "（仅"}}
+{"event": "answer.delta", "data": {"seq": 81, "ts": 1789558375.0385852, "run_id": "a12c636f0322", "type": "answer.delta", "text": "一天）  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 82, "ts": 1789558375.0387332, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 状态：报名中"}}
+{"event": "answer.delta", "data": {"seq": 83, "ts": 1789558375.0388448, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 讲师：王网络"}}
+{"event": "answer.delta", "data": {"seq": 84, "ts": 1789558375.038947, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 组织方"}}
+{"event": "answer.delta", "data": {"seq": 85, "ts": 1789558375.0455613, "run_id": "a12c636f0322", "type": "answer.delta", "text": "：信息技术部  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 86, "ts": 1789558375.045649, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 地点：公司B栋"}}
+{"event": "answer.delta", "data": {"seq": 87, "ts": 1789558375.045749, "run_id": "a12c636f0322", "type": "answer.delta", "text": "201培训室  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 88, "ts": 1789558375.045965, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 方式：线上线下结合"}}
+{"event": "answer.delta", "data": {"seq": 89, "ts": 1789558375.046079, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n\n5. **2025年"}}
+{"event": "answer.delta", "data": {"seq": 90, "ts": 1789558375.0461717, "run_id": "a12c636f0322", "type": "answer.delta", "text": "劳动法律法规培训**（编号"}}
+{"event": "answer.delta", "data": {"seq": 91, "ts": 1789558375.0462878, "run_id": "a12c636f0322", "type": "answer.delta", "text": " TS-2025-005"}}
+{"event": "answer.delta", "data": {"seq": 92, "ts": 1789558375.0463912, "run_id": "a12c636f0322", "type": "answer.delta", "text": "）  \n   - 时间"}}
+{"event": "answer.delta", "data": {"seq": 93, "ts": 1789558375.0465205, "run_id": "a12c636f0322", "type": "answer.delta", "text": "：2025-04-"}}
+{"event": "answer.delta", "data": {"seq": 94, "ts": 1789558375.046624, "run_id": "a12c636f0322", "type": "answer.delta", "text": "10 至 2025"}}
+{"event": "answer.delta", "data": {"seq": 95, "ts": 1789558375.0467532, "run_id": "a12c636f0322", "type": "answer.delta", "text": "-04-11"}}
+{"event": "answer.delta", "data": {"seq": 96, "ts": 1789558375.0468566, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 状态：已结束"}}
+{"event": "answer.delta", "data": {"seq": 97, "ts": 1789558375.0469503, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 讲师："}}
+{"event": "answer.delta", "data": {"seq": 98, "ts": 1789558375.047043, "run_id": "a12c636f0322", "type": "answer.delta", "text": "赵法律  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 99, "ts": 1789558375.0471737, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 组织方：人力资源部"}}
+{"event": "answer.delta", "data": {"seq": 100, "ts": 1789558375.0473127, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 地点：公司"}}
+{"event": "answer.delta", "data": {"seq": 101, "ts": 1789558375.0474136, "run_id": "a12c636f0322", "type": "answer.delta", "text": "A栋301会议室"}}
+{"event": "answer.delta", "data": {"seq": 102, "ts": 1789558375.047506, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 方式：线下"}}
+{"event": "answer.delta", "data": {"seq": 103, "ts": 1789558375.0562766, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n\n6. **2025"}}
+{"event": "answer.delta", "data": {"seq": 104, "ts": 1789558375.5083394, "run_id": "a12c636f0322", "type": "answer.delta", "text": "年质量管理体系内审"}}
+{"event": "answer.delta", "data": {"seq": 105, "ts": 1789558375.516337, "run_id": "a12c636f0322", "type": "answer.delta", "text": "员培训**（编号 TS"}}
+{"event": "answer.delta", "data": {"seq": 106, "ts": 1789558375.5413468, "run_id": "a12c636f0322", "type": "answer.delta", "text": "-2025-006）"}}
+{"event": "answer.delta", "data": {"seq": 107, "ts": 1789558375.5583591, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 时间："}}
+{"event": "answer.delta", "data": {"seq": 108, "ts": 1789558375.576382, "run_id": "a12c636f0322", "type": "answer.delta", "text": "2025-07-15"}}
+{"event": "answer.delta", "data": {"seq": 109, "ts": 1789558375.5953343, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 至 2025-"}}
+{"event": "answer.delta", "data": {"seq": 110, "ts": 1789558375.6133418, "run_id": "a12c636f0322", "type": "answer.delta", "text": "07-17  \n   -"}}
+{"event": "answer.delta", "data": {"seq": 111, "ts": 1789558375.6323843, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 状态：计划中"}}
+{"event": "answer.delta", "data": {"seq": 112, "ts": 1789558375.6503096, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 讲师：周"}}
+{"event": "answer.delta", "data": {"seq": 113, "ts": 1789558375.6765318, "run_id": "a12c636f0322", "type": "answer.delta", "text": "质量  \n   - 组织"}}
+{"event": "answer.delta", "data": {"seq": 114, "ts": 1789558375.6855977, "run_id": "a12c636f0322", "type": "answer.delta", "text": "方：质量管理部"}}
+{"event": "answer.delta", "data": {"seq": 115, "ts": 1789558375.7034829, "run_id": "a12c636f0322", "type": "answer.delta", "text": "  \n   - 地点：外部培训"}}
+{"event": "answer.delta", "data": {"seq": 116, "ts": 1789558375.719435, "run_id": "a12c636f0322", "type": "answer.delta", "text": "中心  \n   - 方式"}}
+{"event": "answer.delta", "data": {"seq": 117, "ts": 1789558375.739577, "run_id": "a12c636f0322", "type": "answer.delta", "text": "：线下  \n\n来源:"}}
+{"event": "answer.delta", "data": {"seq": 118, "ts": 1789558375.7564933, "run_id": "a12c636f0322", "type": "answer.delta", "text": " 数据库查询"}}
+{"event": "stage.finished", "data": {"seq": 119, "ts": 1789558375.756866, "run_id": "a12c636f0322", "type": "stage.finished", "stage": "answering", "ok": true, "summary": "回答完成", "elapsed_ms": 3525}}
+{"event": "run.finished", "data": {"seq": 120, "ts": 1789558375.7570357, "run_id": "a12c636f0322", "type": "run.finished", "status": "ok", "elapsed_ms": 36519, "stats": {"queries": 3, "rows": 9, "charts": 0}, "answer_markdown": "根据数据库记录，2025年（今年）共有 **6** 场培训，具体场次如下：\n\n1. **2025年第一期安全生产基础培训**（编号 TS-2025-001） \n - 时间：2025-05-10 至 2025-05-11 \n - 状态：已结束 \n - 讲师：李安全 \n - 组织方：安全管理部 \n - 地点：公司A栋301会议室 \n - 方式：线下 \n\n2. **2025年第一期中层管理技能提升培训**（编号 TS-2025-002） \n - 时间：2025-03-01 至 2025-03-04 \n - 状态：已结束 \n - 讲师：张管理 \n - 组织方：人力资源部 \n - 地点：外部培训中心 \n - 方式：线下 \n\n3. **2025年Python数据分析进阶培训**（编号 TS-2025-003） \n - 时间：2025-06-01 至 2025-06-05 \n - 状态：进行中 \n - 讲师：陈数据 \n - 组织方：技术部 \n - 地点：公司B栋301机房 \n - 方式：线上 \n\n4. **2025年网络安全意识培训**（编号 TS-2025-004） \n - 时间：2025-09-01（仅一天） \n - 状态：报名中 \n - 讲师：王网络 \n - 组织方：信息技术部 \n - 地点：公司B栋201培训室 \n - 方式：线上线下结合 \n\n5. **2025年劳动法律法规培训**（编号 TS-2025-005） \n - 时间：2025-04-10 至 2025-04-11 \n - 状态：已结束 \n - 讲师：赵法律 \n - 组织方：人力资源部 \n - 地点：公司A栋301会议室 \n - 方式：线下 \n\n6. **2025年质量管理体系内审员培训**（编号 TS-2025-006） \n - 时间：2025-07-15 至 2025-07-17 \n - 状态：计划中 \n - 讲师：周质量 \n - 组织方：质量管理部 \n - 地点：外部培训中心 \n - 方式：线下 \n\n来源: 数据库查询", "caveats": []}}

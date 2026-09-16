@@ -1,0 +1,173 @@
+[
+  {
+    "name": "simple_count",
+    "db_id": "1da18658",
+    "question": "一共有多少名员工？",
+    "path": "simple->sql->answer",
+    "elapsed_s": 12.9,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 3,
+      "stage.finished": 3,
+      "activity.started": 1,
+      "activity.finished": 1,
+      "answer.delta": 3,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "join_detail",
+    "db_id": "1da18658",
+    "question": "列出参加过培训的员工姓名和他们的部门",
+    "path": "analysis->sql->answer",
+    "elapsed_s": 37.6,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 3,
+      "stage.finished": 3,
+      "activity.started": 4,
+      "activity.finished": 4,
+      "answer.delta": 20,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "aggregate",
+    "db_id": "1da18658",
+    "question": "每个培训课程有多少人报名？按人数从多到少排列",
+    "path": "group-by",
+    "elapsed_s": 14.3,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 3,
+      "stage.finished": 3,
+      "activity.started": 1,
+      "activity.finished": 1,
+      "answer.delta": 18,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "chart",
+    "db_id": "1da18658",
+    "question": "把各门考试的平均分画成柱状图",
+    "path": "compute/viz",
+    "elapsed_s": 100.2,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 4,
+      "stage.finished": 4,
+      "activity.started": 13,
+      "activity.finished": 13,
+      "stage.retried": 1,
+      "artifact.created": 1,
+      "answer.delta": 34,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "structure",
+    "db_id": "1da18658",
+    "question": "这个数据库有哪些表？每张表是做什么的？",
+    "path": "fast-path",
+    "elapsed_s": 0.0,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 2,
+      "stage.finished": 2,
+      "answer.delta": 50,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "temporal",
+    "db_id": "1da18658",
+    "question": "今年的培训场次有哪些？",
+    "path": "时间预处理",
+    "elapsed_s": 36.5,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 3,
+      "stage.finished": 3,
+      "activity.started": 8,
+      "activity.finished": 8,
+      "answer.delta": 96,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "empty_result",
+    "db_id": "1da18658",
+    "question": "有没有叫张三丰的员工参加过考试？",
+    "path": "空结果->重试判定",
+    "elapsed_s": 172.7,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 3,
+      "stage.finished": 3,
+      "activity.started": 31,
+      "activity.finished": 31,
+      "stage.retried": 4,
+      "answer.delta": 8,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "pg_hospital",
+    "db_id": "c1c24e63",
+    "question": "这个库里有多少张表？分别叫什么？",
+    "path": "PostgreSQL 方言",
+    "elapsed_s": 50.4,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 3,
+      "stage.finished": 3,
+      "activity.started": 9,
+      "activity.finished": 9,
+      "stage.retried": 3,
+      "answer.delta": 13,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  },
+  {
+    "name": "dm_local",
+    "db_id": "2463d232",
+    "question": "这个数据库里有哪些表？",
+    "path": "达梦方言",
+    "elapsed_s": 0.2,
+    "event_counts": {
+      "run.started": 1,
+      "stage.started": 2,
+      "stage.finished": 2,
+      "answer.delta": 99,
+      "run.finished": 1
+    },
+    "n_sql": 0,
+    "tools": [],
+    "answer_chars": 0
+  }
+]

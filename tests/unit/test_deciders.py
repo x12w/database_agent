@@ -52,12 +52,13 @@ def _text_of(message: Any) -> str:
 
 
 class _Result:
-    """最小 `QueryResult` 替身（评估只看行数/列名/样例行）。"""
+    """最小 `QueryResult` 替身（评估只看行数/列名/样例行/是否被截断）。"""
 
-    def __init__(self, rows: int) -> None:
+    def __init__(self, rows: int, truncated: bool = False) -> None:
         self.row_count = rows
         self.columns = ["c"]
         self.rows = [{"c": index} for index in range(rows)]
+        self.truncated = truncated
 
 
 #: 抓取原文：`empty_result` 用例的用户问题。
@@ -252,3 +253,53 @@ async def test_llm_unavailable_accepts_existing_rows() -> None:
     outcome = await evaluate_results([_Result(3)], COUNT_QUESTION, llm=llm, ran_any_query=True)
     assert outcome.satisfactory is True
     assert "3" in outcome.reason
+
+
+# ---------------------------------------------------------- 缺陷 5：样例条数 ≠ 结果条数
+
+
+@pytest.mark.asyncio
+async def test_small_result_is_given_in_full_not_as_a_sample() -> None:
+    """缺陷 5：结果不大时**整份给出**，而不是给 3 行样例。
+
+    只要出现截断，小模型就会怀疑"是不是没列全"，判结果不完整并重试
+    （实测 pg_hospital 因此一度 4 重试 / 273s）。歧义只在截断时产生，
+    所以 20 行以内直接全给 —— "列出 10 张表"这类问题因此再无歧义。
+    """
+    from dbchat.agent.deciders import _summarize
+
+    text = "\n".join(_summarize([_Result(10)]))
+
+    assert "共 10 行" in text, "总行数仍要出现"
+    assert "全部结果如下" in text, "10 行应当整份给出"
+    assert "仅展示前" not in text, "不该出现截断措辞"
+    # 10 行全都出现在提示里
+    assert text.count("{'c':") == 10
+
+
+@pytest.mark.asyncio
+async def test_large_result_is_truncated_and_says_so() -> None:
+    """超过阈值的才截断，且必须写明完整性以总行为准。"""
+    from dbchat.agent.deciders import _EVAL_SAMPLE_ROWS, _summarize
+
+    rows = _EVAL_SAMPLE_ROWS + 30
+    text = "\n".join(_summarize([_Result(rows)]))
+
+    assert "全部结果如下" not in text
+    assert f"仅展示前 {_EVAL_SAMPLE_ROWS} 行" in text
+    assert f"共 {rows} 行" in text
+
+
+@pytest.mark.asyncio
+async def test_truncated_result_is_never_labelled_as_complete() -> None:
+    """被行数上限截断的结果不能标"全部结果如下" —— 那是在撒谎。"""
+    from dbchat.agent.deciders import _summarize
+
+    # rows 只有 5 条、但 row_count 是 200 且标记被截断
+    result = _Result(5, truncated=True)
+    result.row_count = 200
+    text = "\n".join(_summarize([result]))
+
+    assert "全部结果如下" not in text
+    assert "被行数上限截断" in text
+    assert "实际行数可能更多" in text

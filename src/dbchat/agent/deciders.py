@@ -67,6 +67,11 @@ logger = logging.getLogger(__name__)
 #: 于是**真正的重试判定被静默丢掉**。实测同一问题 200 tokens 时
 #: 回复已贴着上限。留一倍余量。
 _DECIDE_MAX_TOKENS = 400
+
+#: 评估器看到的样例行数上限。**只有超过这个数才截断** ——
+#: 截断本身才是"样例被误当成完整结果"的根源，能全给就全给。
+#: 20 行足以覆盖绝大多数"列出 N 个"类问题，又不会把提示词撑爆。
+_EVAL_SAMPLE_ROWS = 20
 _PLAN_MAX_TOKENS = 150
 
 _EVALUATOR_SYSTEM = (
@@ -165,13 +170,37 @@ def _total_rows(results: Sequence[QueryResult]) -> int:
     return sum(result.row_count for result in results)
 
 
-def _summarize(results: Sequence[QueryResult], sample_rows: int = 3) -> list[str]:
+def _summarize(results: Sequence[QueryResult], sample_rows: int = _EVAL_SAMPLE_ROWS) -> list[str]:
+    """把查询结果渲染成评估器可读的文本。
+
+    **歧义只在截断时产生，所以结果不大时就不截断。**
+
+    旧写法是 `查询1: 10行, 列=[...], 样例=[3 条]` —— 行数给了，但紧挨着
+    只有 3 条的样例列表会让小模型把样例当成完整结果，判"只列出了 3 个、
+    不完整"，驱动多余重试（实测 pg_hospital 因此 2 重试变 4 重试、
+    169s → 273s）。只加一句"样例是截断预览"仍不够 —— 它照样怀疑。
+    现在：行数不超过 `_EVAL_SAMPLE_ROWS` 就整份给出，超过才截断并注明。
+    """
     parts: list[str] = []
     for index, result in enumerate(results, 1):
-        parts.append(
-            f"查询{index}: {result.row_count}行, 列={list(result.columns)}, "
-            f"样例={result.rows[:sample_rows]}"
-        )
+        lines = [f"查询{index}: 共 {result.row_count} 行，列={list(result.columns)}"]
+        if result.truncated:
+            lines.append("  （结果被行数上限截断，实际行数可能更多）")
+        if result.rows:
+            # "全部"这个断言必须同时满足：没被上限截断，且行数在阈值内。
+            # 只看行数长度会在"rows 被截断但 row_count 更大"时撒谎。
+            if not result.truncated and len(result.rows) <= sample_rows:
+                lines.append("  全部结果如下：")
+                shown = result.rows
+            else:
+                shown = result.rows[:sample_rows]
+                lines.append(
+                    f"  结果较长，以下仅展示前 {len(shown)} 行"
+                    f"（是完整结果的一部分；完整性以「共 {result.row_count} 行」为准）："
+                )
+            for row in shown:
+                lines.append(f"    {row}")
+        parts.append("\n".join(lines))
     return parts
 
 
@@ -235,7 +264,9 @@ async def evaluate_results(
         "查哪些表/列，用什么条件；**只描述现状、没有给出改动的不是 hint**\n\n"
         "核心原则：结果必须能直接回答用户问题才算充分，否则就重试。\n"
         "注意：查询已经执行过了（不是没查），所以重试建议应当针对查询口径，"
-        "而不是要求再次确认表结构。\n\n"
+        "而不是要求再次确认表结构。\n"
+        "**判断完整性以「共 N 行」为准，不要以样例条数判断** —— "
+        "样例只展示前几行，结果有 10 行而你只看到 3 行样例，说明结果是完整的。\n\n"
         f"用户问题: {question}\n"
         f"问题类型: {'是非/存在性 —— 答案可以是「没有」' if boolean else '数据/统计'}\n"
     )

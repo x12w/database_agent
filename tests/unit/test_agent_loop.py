@@ -579,10 +579,11 @@ async def test_classifier_keywords_win_without_calling_llm() -> None:
 
 
 class _FakeResult:
-    def __init__(self, rows: int) -> None:
+    def __init__(self, rows: int, truncated: bool = False) -> None:
         self.row_count = rows
         self.columns = ["c"]
         self.rows = [{"c": 1}] * rows
+        self.truncated = truncated
 
 
 @pytest.mark.asyncio

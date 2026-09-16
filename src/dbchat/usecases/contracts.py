@@ -12,8 +12,9 @@ API 层只依赖这里定义的类型，不直接接触 agent / tools / db 的�
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Protocol
+from typing import Protocol
 
 from dbchat.domain.profile import DatabaseProfile
 from dbchat.domain.query import Artifact, QueryResult

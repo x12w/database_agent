@@ -19,7 +19,6 @@ from dbchat.db.sqltext import (
     strip_comments,
 )
 
-
 # ---------------------------------------------------------- 占位符改写
 
 
@@ -202,3 +201,27 @@ def test_iter_segments_classifies() -> None:
     for segment in segments:
         assert sql[segment.start : segment.end] == segment.text
     assert "".join(seg.text for seg in segments) == sql
+
+
+# ---------------------------------------------- 哨兵改写（游标告警的判据）
+
+
+@pytest.mark.parametrize(
+    ("sql", "expects_sentinel"),
+    [
+        # 只有字面量里有 %s —— 代码态没有占位符，不该报"未绑定参数"
+        ("SELECT '100%s' AS a, 'x%s y' AS b, CONCAT('%s') AS c", False),
+        ("SELECT * FROM t WHERE note LIKE '%s%'", False),
+        # 代码态里确实有占位符
+        ("SELECT * FROM t WHERE a = %s", True),
+        ("SELECT * FROM t WHERE a = %s AND b LIKE '%s%'", True),
+    ],
+)
+def test_sentinel_rewrite_detects_code_state_only(sql: str, expects_sentinel: bool) -> None:
+    """改写哨兵后是否出现哨兵 == "代码态里有没有占位符"。
+
+    `DialectCursor._warn_if_unbound` 就靠这个判据 —— 曾经写成"改写后
+    是否仍含占位符"，于是每一条带 `%s` 字面量的 SQL 都会误告警。
+    """
+    sentinel = "\x00"
+    assert (sentinel in rewrite_placeholders(sql, "%s", sentinel)) is expects_sentinel, sql

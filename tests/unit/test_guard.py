@@ -453,3 +453,50 @@ def test_python_dict_style_placeholders_are_untouched(snapshot: SchemaSnapshot) 
     result = inspect(MYSQL, sql, snapshot=snapshot, row_limit=200)
     assert "LIKE '%s%'" in result.sql, result.sql
     assert "LIMIT 200" in result.sql
+
+
+# --------------------------------------------------------------- 带 JOIN 的补限流
+
+
+class TestRowLimitWithJoins:
+    """回归：`_fingerprint` 曾对 sqlglot 的**列表型参数**调用 `.sql()`。
+
+    `Select.args["joins"]` 是 `list[exp.Join]`（而 `args["from"]` 是单个
+    `From`），所以任何**带 JOIN 且需要补行数限制**的查询都会抛
+    `AttributeError: 'list' object has no attribute 'sql'`，
+    工具调用直接失败。原有的 333 个测试全绿 —— 端到端跑真实查询才发现。
+    """
+
+    def test_join_query_gets_a_row_limit(self) -> None:
+        dialect = get_dialect(DialectKind.MYSQL)
+        sql = (
+            "SELECT c.course_name, COUNT(*) AS n FROM training_course c "
+            "JOIN training_enrollment e ON e.course_id = c.id "
+            "GROUP BY c.course_name ORDER BY n DESC"
+        )
+        outcome = inspect(dialect, sql, row_limit=100)
+
+        assert outcome.ok, f"带 JOIN 的查询不该被拒绝: {outcome.errors}"
+        assert "LIMIT" in outcome.sql.upper(), "应当补上行数限制"
+
+    def test_left_join_query_gets_a_row_limit(self) -> None:
+        dialect = get_dialect(DialectKind.MYSQL)
+        outcome = inspect(
+            dialect,
+            "SELECT e.name, d.dept_name FROM employee e "
+            "LEFT JOIN department d ON d.id = e.dept_id",
+            row_limit=50,
+        )
+        assert outcome.ok
+        assert "LIMIT" in outcome.sql.upper()
+
+    def test_join_query_without_existing_limit_is_limited(self) -> None:
+        """已有 LIMIT 的不重复补。"""
+        dialect = get_dialect(DialectKind.MYSQL)
+        outcome = inspect(
+            dialect,
+            "SELECT a.x FROM t1 a JOIN t2 b ON b.id = a.x LIMIT 5",
+            row_limit=100,
+        )
+        assert outcome.ok
+        assert outcome.sql.upper().count("LIMIT") == 1

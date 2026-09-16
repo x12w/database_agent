@@ -556,12 +556,26 @@ def _same_query(before: exp.Expression, dialect: Dialect, rewritten: str) -> boo
     return _fingerprint(before) == _fingerprint(after)
 
 
+def _clause_text(value: Any) -> str:
+    """把 sqlglot 的参数值规范成文本。
+
+    **参数值可能是单个表达式，也可能是表达式列表。** 例如 `Select.args["joins"]`
+    是 `list[exp.Join]`，`args["from"]` 却是单个 `From`。早先直接对参数值调
+    `.sql()`，于是**任何带 JOIN 且需要补行数限制的查询都会在这里崩**
+    （`AttributeError: 'list' object has no attribute 'sql'`），
+    工具调用失败、用户拿到报错。
+    """
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return " ".join(_clause_text(item) for item in value)
+    sql = getattr(value, "sql", None)
+    return sql() if callable(sql) else str(value)
+
+
 def _fingerprint(tree: exp.Expression) -> tuple[Any, ...]:
     """结构指纹：表集合 + 列集合 + 各子句的规范化文本。"""
     tables = sorted(node.sql() for node in tree.find_all(exp.Table))
     columns = sorted(node.sql() for node in tree.find_all(exp.Column))
-    clauses = tuple(
-        tree.args[key].sql() if tree.args.get(key) is not None else ""
-        for key in _STRUCTURE_SQL_ARGS
-    )
+    clauses = tuple(_clause_text(tree.args.get(key)) for key in _STRUCTURE_SQL_ARGS)
     return (tuple(tables), tuple(columns), clauses)

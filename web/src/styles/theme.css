@@ -1,0 +1,382 @@
+/* ============================================================================
+   dbchat 前端主题
+   调色板沿用旧实现（app/static/style.css:16-44）—— 深色终端质感是刻意选择，
+   不是"默认暗色"。令牌名字与旧文件保持一致，方便两边对照。
+
+   字体：全部走系统字体栈，**不引用任何 CDN**（机器可能离线）。
+   ========================================================================== */
+
+:root {
+  --bg-primary: #1a1d23;
+  --bg-surface: #22262f;
+  --bg-elevated: #282c36;
+  --bg-code: #1e2128;
+  --bg-input: #1c1f27;
+  --accent-warm: #e5b567;
+  --accent-warm-dim: #c4943e;
+  --accent-cool: #5cc9b7;
+  --accent-cool-dim: #3ba898;
+  --accent-red: #e0556a;
+  --accent-green: #7ec87b;
+  --text-primary: #e8e4dd;
+  --text-secondary: #b0b3b8;
+  --text-muted: #8b8d94;
+  --text-dim: #6b6e76;
+  --border: #333842;
+  --border-light: #3a3e49;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+    "Noto Sans SC", "Source Han Sans SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "JetBrains Mono",
+    "Fira Code", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --transition: 150ms ease;
+
+  /* 步骤流的几何：一行的高度与左侧引导线的位置。
+     所有步骤行共享这套值，纵向节奏才不会忽宽忽窄。 */
+  --step-gutter: 22px;
+  --step-indent: 22px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.65;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-cool-dim);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(229, 181, 103, 0.3);
+}
+
+/* --- 滚动条 ------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* --- 通用小件 ----------------------------------------------------------- */
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  transition: var(--transition);
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent-cool-dim);
+  color: var(--text-primary);
+}
+
+.btn-primary {
+  border-color: var(--accent-warm-dim);
+  color: var(--accent-warm);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 6px 8px;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-code);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* --- 弹层 --------------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 12, 16, 0.7);
+  backdrop-filter: blur(2px);
+}
+
+.dialog {
+  width: min(720px, 100%);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-header h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.dialog-body {
+  padding: 16px 18px;
+  overflow: auto;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+/* --- 状态点 ------------------------------------------------------------- */
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex: none;
+}
+
+.status-dot[data-tone='ok'] {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px rgba(126, 200, 123, 0.5);
+}
+
+.status-dot[data-tone='warn'] {
+  background: var(--accent-warm);
+}
+
+.status-dot[data-tone='error'] {
+  background: var(--accent-red);
+}
+
+.status-dot[data-tone='busy'] {
+  background: var(--accent-cool);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* --- markdown 渲染结果 -------------------------------------------------- */
+
+.markdown {
+  font-size: var(--text-base);
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.markdown > * + * {
+  margin-top: 0.75em;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin-top: 1.2em;
+  color: var(--text-primary);
+}
+
+.markdown h1 {
+  font-size: var(--text-xl);
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.4em;
+}
+
+.markdown li + li {
+  margin-top: 0.25em;
+}
+
+.markdown a {
+  color: var(--accent-cool);
+}
+
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.markdown pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-sm);
+}
+
+.markdown blockquote {
+  border-left: 2px solid var(--border-light);
+  padding-left: 12px;
+  color: var(--text-secondary);
+}
+
+.markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--text-sm);
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown th {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

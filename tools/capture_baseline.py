@@ -24,6 +24,11 @@ from pathlib import Path
 
 BASE = "http://127.0.0.1:8000"
 
+#: 聊天流端点。旧实现是 /chat/stream，v4 统一到 /api/ 前缀下。
+#: 这个差异必须显式配置 —— 打错路径会得到 404 而事件数为 0，
+#: 看起来像"跑得飞快"，很容易误判成成功。
+CHAT_PATH = "/api/chat/stream"
+
 
 @dataclass
 class Case:
@@ -50,12 +55,13 @@ CASES: list[Case] = [
 ]
 
 
-def stream(question: str, db_id: str, session_id: str, timeout: int = 420) -> list[dict]:
+def stream(question: str, db_id: str, session_id: str, timeout: int = 420,
+           chat_path: str = CHAT_PATH) -> list[dict]:
     """调用 /chat/stream，返回解析后的事件列表。"""
     params = urllib.parse.urlencode(
         {"message": question, "db_id": db_id, "session_id": session_id}
     )
-    req = urllib.request.Request(f"{BASE}/chat/stream?{params}")
+    req = urllib.request.Request(f"{BASE}{chat_path}?{params}")
     events: list[dict] = []
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         event_name = ""
@@ -104,6 +110,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="tests/golden")
     ap.add_argument("--only", default=None, help="只跑名字匹配的用例")
+    ap.add_argument("--path", default=CHAT_PATH,
+                    help="聊天流端点；旧实现为 /chat/stream，v4 为 /api/chat/stream")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -126,7 +134,7 @@ def main() -> int:
         print(f"\n=== {case.name} [{case.path}] :: {case.question}")
         started = time.time()
         try:
-            events = stream(case.question, case.db_id, session_id)
+            events = stream(case.question, case.db_id, session_id, chat_path=args.path)
         except Exception as exc:  # noqa: BLE001 - 采集脚本，失败也要继续跑完其余用例
             print(f"    失败: {type(exc).__name__}: {exc}")
             index.append({**asdict(case), "error": f"{type(exc).__name__}: {exc}"})
@@ -150,6 +158,10 @@ def main() -> int:
                 "answer_chars": len(summary["answer"]),
             }
         )
+        if not events:
+            print(f"    ⚠ 零事件 —— 端点可能不对（当前 {args.path}），或服务未就绪")
+            index.append({**asdict(case), "error": "zero_events"})
+            continue
         print(f"    {elapsed}s, {len(events)} 事件, {len(summary['sql'])} 条 SQL")
         print(f"    回答: {summary['answer'][:160].replace(chr(10), ' ')}")
 

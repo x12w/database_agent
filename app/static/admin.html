@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理面板 — MySQL 智能查询助手</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/admin.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="admin-app">
+
+  <!-- Header -->
+  <header class="admin-topbar">
+    <div class="admin-topbar-left">
+      <h1>⚙ 管理面板</h1>
+      <span class="admin-topbar-subtitle">数据库管理员问答系统</span>
+    </div>
+    <div class="admin-topbar-right">
+      <a href="http://localhost:8000" class="admin-back-link" title="返回聊天应用">← 返回聊天</a>
+    </div>
+  </header>
+
+  <!-- Database Selector -->
+  <div class="admin-db-bar">
+    <label for="admin-db-select">数据库：</label>
+    <select id="admin-db-select" class="admin-db-select">
+      <option value="">选择数据库...</option>
+    </select>
+    <span id="admin-db-info" class="admin-db-info"></span>
+    <span id="admin-pending-badge" class="admin-pending-badge" style="display:none">0 待回答</span>
+  </div>
+
+  <!-- Tab Navigation -->
+  <nav class="admin-tabs">
+    <button class="admin-tab active" data-tab="pending">❓ 待回答 <span class="tab-count" id="tab-count-pending">0</span></button>
+    <button class="admin-tab" data-tab="answered">💬 已回答 <span class="tab-count" id="tab-count-answered">0</span></button>
+    <button class="admin-tab" data-tab="explore">🔍 数据库探索</button>
+  </nav>
+
+  <!-- Tab: Pending Questions -->
+  <section class="admin-tab-content active" id="tab-pending">
+    <div class="admin-loading" id="pending-loading">加载中...</div>
+    <div class="admin-empty" id="pending-empty" style="display:none">
+      <p>✅ 暂无待回答的问题</p>
+      <p class="muted">前往「🔍 数据库探索」扫描新的编码列</p>
+    </div>
+    <div class="admin-question-list" id="pending-list"></div>
+  </section>
+
+  <!-- Tab: Answered Questions -->
+  <section class="admin-tab-content" id="tab-answered">
+    <div class="admin-loading" id="answered-loading" style="display:none">加载中...</div>
+    <div class="admin-empty" id="answered-empty" style="display:none">
+      <p>暂无已回答的问题</p>
+    </div>
+    <div class="admin-question-list" id="answered-list"></div>
+  </section>
+
+  <!-- Tab: Explore -->
+  <section class="admin-tab-content" id="tab-explore">
+    <div class="explore-panel">
+      <div class="explore-header">
+        <h3>主动探索数据库</h3>
+        <p class="muted">系统将扫描所有表，识别编码/缩写列，并自动向管理员提问。回答后的知识将用于后续查询。</p>
+      </div>
+
+      <!-- Profile progress -->
+      <div class="explore-progress" id="explore-progress" style="display:none">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+        <div class="progress-text" id="progress-text"></div>
+      </div>
+
+      <button id="btn-start-explore" class="btn-explore-start" disabled>🔍 开始探索</button>
+      <button id="btn-stop-explore" class="btn-explore-stop" style="display:none">⏹ 停止探索</button>
+
+      <!-- Inline question cards during exploration -->
+      <div class="explore-questions" id="explore-questions"></div>
+
+      <!-- Exploration summary -->
+      <div class="explore-summary" id="explore-summary" style="display:none"></div>
+    </div>
+  </section>
+
+</div>
+
+<script src="/static/admin.js"></script>
+</body>
+</html>

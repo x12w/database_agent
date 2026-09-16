@@ -1,0 +1,31 @@
+# ---- secrets ----
+.env
+.env.*
+!.env.example
+data/profiles.json
+
+# ---- python ----
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# ---- runtime state / caches ----
+var/
+data/*
+!data/.gitkeep
+!data/profiles.example.json
+
+# ---- generated artifacts ----
+app/static/charts/
+web/node_modules/
+web/dist/
+
+# ---- editors / os ----
+.idea/
+.vscode/
+.DS_Store

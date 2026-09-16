@@ -1,0 +1,57 @@
+[
+  {
+    "id": "650489f6",
+    "name": "ecommerce_db",
+    "host": "127.0.0.1",
+    "port": 3308,
+    "user": "root",
+    "password": "",
+    "database": "ecommerce_db",
+    "db_type": "mysql",
+    "description": ""
+  },
+  {
+    "id": "1da18658",
+    "name": "training_exam_db",
+    "host": "127.0.0.1",
+    "port": 3307,
+    "user": "root",
+    "password": "",
+    "database": "training_exam_db",
+    "db_type": "mysql",
+    "description": ""
+  },
+  {
+    "id": "c1c24e63",
+    "name": "hospital_db",
+    "host": "127.0.0.1",
+    "port": 5433,
+    "user": "postgres",
+    "password": "",
+    "database": "hospital_db",
+    "db_type": "postgresql",
+    "description": ""
+  },
+  {
+    "id": "2463d232",
+    "name": "DAMENG",
+    "host": "127.0.0.1",
+    "port": 5237,
+    "user": "SYSDBA",
+    "password": "",
+    "database": "DAMENG",
+    "db_type": "dameng",
+    "description": ""
+  },
+  {
+    "id": "7c51b0b2",
+    "name": "DAMENG_TEST",
+    "host": "10.1.6.74",
+    "port": 5236,
+    "user": "JS_SG_MANAGE",
+    "password": "",
+    "database": "JS_SG_MANAGE",
+    "db_type": "dameng",
+    "description": ""
+  }
+]

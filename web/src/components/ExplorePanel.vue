@@ -1,92 +1,123 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 
-import AdminQuestionCard from './AdminQuestionCard.vue'
+import ExploreStage from './ExploreStage.vue'
 import { exploreDatabase } from '../api/admin.ts'
+import {
+  applyExploreEvent,
+  createExploreState,
+  exploreStatusLabel,
+  markEntryResolved,
+  resetExploreProgress,
+} from '../core/explore.ts'
 import { databasesStore } from '../stores/databases.ts'
-import type { ExploreQuestionEvent } from '../types/api.ts'
 
 /**
- * 主动探索数据库：一条独立 SSE 通道（事件名 progress / admin_question /
- * done / explore_error），进度条 + 就地冒出的新问题卡片。
+ * 主动探索数据库：一条独立 SSE 通道。
+ *
+ * 事件不再是旧实现的 `progress` / `admin_question` / `done` / `explore_error`，
+ * 而是契约里的 `explore.*`（`src/dbchat/events/explore.py`）。归约全在
+ * `core/explore.ts`（纯函数），这里只负责连接、中止与把状态交给展示层。
  */
 const emit = defineEmits<{ questionsChanged: [] }>()
 
 const props = defineProps<{ profileId: string | null }>()
 
+const state = reactive(createExploreState())
 const running = ref(false)
-const progressText = ref('')
-const progressPct = ref(0)
-const questions = ref<ExploreQuestionEvent[]>([])
-const summary = ref<string | null>(null)
-const errored = ref(false)
+const transportError = ref<string | null>(null)
+/** 本次探索针对的库。卡片上的回答必须回给**发起探索时**的那个库。 */
+const sessionProfileId = ref<string | null>(null)
 
 let controller: AbortController | null = null
 
 const canStart = computed(() => props.profileId !== null && !running.value)
+const statusLabel = computed(() => exploreStatusLabel(state))
 
 function start(): void {
   if (!props.profileId) return
   running.value = true
-  errored.value = false
-  summary.value = null
-  progressPct.value = 0
-  progressText.value = '正在连接数据库…'
-  questions.value = []
-  controller = new AbortController()
+  transportError.value = null
+  sessionProfileId.value = props.profileId
+  // 只重置进度：上一轮发现的卡片留在原地，重新探索不该清空管理员刚看过的东西。
+  resetExploreProgress(state)
+
+  const ctrl = new AbortController()
+  controller = ctrl
 
   void exploreDatabase(
     props.profileId,
     null,
     {
-      onProgress: (event) => {
-        progressText.value = [event.phase, event.title].filter(Boolean).join(' · ') + (event.detail ? `: ${event.detail}` : '')
-        const match = event.detail?.match(/(\d+)\s*\/\s*(\d+)/)
-        if (match && match[1] && match[2]) {
-          const done = Number(match[1])
-          const total = Number(match[2])
-          if (total > 0) progressPct.value = Math.min(95, Math.round((done / total) * 100))
+      onEvent: (event) => {
+        applyExploreEvent(state, event)
+        if (event.type === 'explore.finished' || event.type === 'explore.failed') {
+          emit('questionsChanged')
         }
-        if (event.status === 'done') progressPct.value = 100
       },
-      onQuestion: (event) => {
-        questions.value.unshift(event)
-      },
-      onDone: (event) => {
-        if (event.status === 'error') return
-        progressPct.value = 100
-        progressText.value = '探索完成'
-        summary.value = `发现 ${event.questions_submitted ?? 0} 个新问题，跳过 ${event.skipped ?? 0} 个（已有答案）`
-        emit('questionsChanged')
-      },
-      onError: (message) => {
-        errored.value = true
-        progressText.value = message
+      // 传输层中断（连接掉了）。业务失败走 explore.failed 事件，不在这里。
+      onError: (error) => {
+        if (ctrl.signal.aborted) return
+        transportError.value = error instanceof Error ? error.message : '探索连接中断'
       },
       onClose: () => {
+        if (controller !== ctrl) return // 已经开始了新的一轮，旧的收尾不要插进来
         running.value = false
         controller = null
+        if (state.status === 'running') {
+          // 流结束了却没有 explore.finished / explore.failed：不能留一个永远转圈的进度条。
+          if (transportError.value) {
+            state.status = 'failed'
+            state.failure = {
+              code: 'internal',
+              message: '探索连接提前结束，本次探索没有跑完。',
+              errorDetail: transportError.value,
+            }
+          } else {
+            state.status = 'stopped'
+          }
+          emit('questionsChanged')
+        }
         void databasesStore.refreshStatus(false)
       },
     },
-    controller.signal,
+    ctrl.signal,
   )
 }
 
 function stop(): void {
-  controller?.abort()
-  controller = null
+  const ctrl = controller
   running.value = false
-  progressText.value = '已停止探索'
-}
-
-function onCardDone(event: ExploreQuestionEvent): void {
-  questions.value = questions.value.filter((q) => q.question_id !== event.question_id)
+  state.status = 'stopped'
+  controller = null
+  ctrl?.abort()
   emit('questionsChanged')
 }
 
-function onCardIgnored(event: ExploreQuestionEvent): void {
-  questions.value = questions.value.filter((q) => q.question_id !== event.question_id)
+// 换库时不能继续跑：卡片已经带着旧库的上下文，而面板已经是新库的了。
+watch(
+  () => props.profileId,
+  () => {
+    if (running.value) stop()
+  },
+)
+
+// 离开管理页时把流关掉，不留一条没人收的 SSE 连接（也不重连 —— 自己解析分帧的
+// 好处就在这里：断开就是断开）。
+onBeforeUnmount(() => {
+  const ctrl = controller
+  controller = null
+  ctrl?.abort()
+})
+
+function onAnswered(questionId: string, answer: string): void {
+  markEntryResolved(state, questionId, answer)
+  emit('questionsChanged')
+}
+
+function onIgnored(questionId: string): void {
+  markEntryResolved(state, questionId, null)
+  emit('questionsChanged')
 }
 </script>
 
@@ -96,39 +127,22 @@ function onCardIgnored(event: ExploreQuestionEvent): void {
       扫描所有表，识别编码/缩写列，并就其业务含义向你提问。回答后的知识会用于后续查询。
     </p>
 
-    <div v-if="running || progressText" class="progress">
-      <div class="bar"><div class="fill" :style="{ width: `${progressPct}%` }" /></div>
-      <p class="progress-text" :class="{ error: errored }">{{ progressText }}</p>
-    </div>
-
     <div class="controls">
       <button v-if="!running" type="button" class="btn btn-primary" :disabled="!canStart" @click="start">
         开始探索
       </button>
       <button v-else type="button" class="btn danger" @click="stop">停止探索</button>
+      <span v-if="state.status !== 'idle'" class="state mono">{{ statusLabel }}</span>
     </div>
 
-    <p v-if="summary" class="summary">{{ summary }}</p>
+    <p v-if="transportError" class="error">{{ transportError }}</p>
 
-    <div v-if="questions.length" class="cards">
-      <AdminQuestionCard
-        v-for="question in questions"
-        :key="question.question_id"
-        :question="{
-          question_id: question.question_id,
-          table_name: question.table_name,
-          column_name: question.column_name,
-          question: question.question,
-          sample_values: question.sample_values,
-          created_at: '新发现',
-        }"
-        :profile-id="profileId"
-        :guess="question.agent_guess ?? null"
-        fresh
-        @done="onCardDone(question)"
-        @ignored="onCardIgnored(question)"
-      />
-    </div>
+    <ExploreStage
+      :state="state"
+      :profile-id="sessionProfileId"
+      @answered="onAnswered"
+      @ignored="onIgnored"
+    />
   </section>
 </template>
 
@@ -144,37 +158,10 @@ function onCardIgnored(event: ExploreQuestionEvent): void {
   font-size: var(--text-sm);
 }
 
-.progress {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.bar {
-  height: 4px;
-  border-radius: 999px;
-  background: var(--bg-elevated);
-  overflow: hidden;
-}
-
-.fill {
-  height: 100%;
-  background: var(--accent-cool);
-  transition: width 300ms ease;
-}
-
-.progress-text {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-}
-
-.progress-text.error {
-  color: var(--accent-red);
-}
-
 .controls {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
 .danger {
@@ -182,15 +169,13 @@ function onCardIgnored(event: ExploreQuestionEvent): void {
   border-color: rgba(224, 85, 106, 0.35);
 }
 
-.summary {
-  font-size: var(--text-sm);
-  color: var(--accent-green);
+.state {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
 }
 
-.cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 4px;
+.error {
+  font-size: var(--text-sm);
+  color: var(--accent-red);
 }
 </style>

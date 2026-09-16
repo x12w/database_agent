@@ -2,9 +2,11 @@
 /**
  * 事件契约漂移检查。
  *
- * 读 `src/dbchat/events/chat.py` 与 `base.py`（pydantic 源码）和
- * `src/types/events.ts`（手写镜像），逐项比对：
- *   · 事件类型清单（CHAT_EVENT_TYPES ↔ ChatEventMap / EVENT_TYPES）
+ * 读 `src/dbchat/events/chat.py`（聊天通道）、`src/dbchat/events/explore.py`
+ * （探索通道）与 `base.py`（pydantic 源码）和 `src/types/events.ts`（手写镜像），
+ * 逐项比对：
+ *   · 每条通道的事件类型清单（CHAT_EVENT_TYPES / EXPLORE_EVENT_TYPES
+ *     ↔ EVENT_TYPES / EXPLORE_EVENT_TYPES 与 ChatEventMap / ExploreEventMap）
  *   · 每种事件的字段名
  *   · 事件基类与嵌套模型（EventBase / ProfileView / RunStats / StageView）的字段
  *   · 枚举成员（Stage / ActivityKind / ErrorCode）
@@ -15,6 +17,9 @@
  * 用法：
  *   node scripts/check-types.mjs [path/to/events.ts]   # 默认 src/types/events.ts
  * 有漂移时退出码为 1。
+ *
+ * 故障注入自测：把契约文件复制到别处改坏，再用 `DBCHAT_CONTRACT_ROOT` 指过去，
+ * 检查脚本仍然报错（见 README「事件契约与漂移检查」）。
  */
 
 import { readFileSync } from 'node:fs'
@@ -23,9 +28,13 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const webRoot = resolve(here, '..')
-const repoRoot = resolve(webRoot, '..')
+/** 契约文件所在仓库根。指向另一份拷贝即可做故障注入自测，不动真文件。 */
+const repoRoot = process.env.DBCHAT_CONTRACT_ROOT
+  ? resolve(process.env.DBCHAT_CONTRACT_ROOT)
+  : resolve(webRoot, '..')
 
 const CHAT_PY = resolve(repoRoot, 'src/dbchat/events/chat.py')
+const EXPLORE_PY = resolve(repoRoot, 'src/dbchat/events/explore.py')
 const BASE_PY = resolve(repoRoot, 'src/dbchat/events/base.py')
 const TS = resolve(webRoot, process.argv[2] ?? 'src/types/events.ts')
 
@@ -114,29 +123,63 @@ function pythonFrozenSet(src, name) {
   return [...body.matchAll(/ErrorCode\.([A-Z_]+)/g)].map((m) => m[1].toLowerCase())
 }
 
-const chatPy = stripDocstrings(read(CHAT_PY))
+/**
+ * 解析一条通道：事件清单 + 每个 `(EventBase)` 子类的字段。
+ *
+ * 两条通道的结构完全一样（`X_EVENT_TYPES` 元组 + `class Y(EventBase)`），
+ * 所以这里只写一份，chat 与 explore 各调一次。
+ */
+function pythonChannel(src, typesName, path) {
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  const types = pythonTupleStrings(src, typesName)
+  if (!types) {
+    console.error(`在 ${name} 里找不到 ${typesName} —— 契约文件结构变了，请更新本脚本。`)
+    process.exit(2)
+  }
+  if (types.length !== new Set(types).size) {
+    fail(`${name} 的 ${typesName} 里有重复的事件类型`)
+  }
+
+  const events = new Map()
+  const classes = [...src.matchAll(/^class (\w+)\(EventBase\):/gm)].map((m) => m[1])
+  for (const className of classes) {
+    const body = pythonClassBody(src, className)
+    const typeLiteral = /type: *Literal\["([^"]+)"\]/.exec(body)?.[1]
+    if (!typeLiteral) continue
+    events.set(typeLiteral, { className, fields: pythonFields(body) })
+  }
+
+  const missingClasses = types.filter((type) => !events.has(type))
+  if (missingClasses.length) {
+    fail(`${name} 的 ${typesName} 里有 ${missingClasses.join(', ')}，但没有对应的 EventBase 子类`)
+  }
+  const unlisted = [...events.keys()].filter((type) => !types.includes(type))
+  if (unlisted.length) {
+    fail(`${name} 里定义了 ${unlisted.join(', ')}，但没有列进 ${typesName}`)
+  }
+  return { path, name, types, events }
+}
+
 const basePy = stripDocstrings(read(BASE_PY))
+const pyChannels = [
+  {
+    key: 'chat',
+    py: pythonChannel(stripDocstrings(read(CHAT_PY)), 'CHAT_EVENT_TYPES', CHAT_PY),
+    tsTypes: 'EVENT_TYPES',
+    tsMap: 'ChatEventMap',
+  },
+  {
+    key: 'explore',
+    py: pythonChannel(stripDocstrings(read(EXPLORE_PY)), 'EXPLORE_EVENT_TYPES', EXPLORE_PY),
+    tsTypes: 'EXPLORE_EVENT_TYPES',
+    tsMap: 'ExploreEventMap',
+  },
+]
 
-// 事件类型 → Python 类名
-const pyEventTypes = pythonTupleStrings(chatPy, 'CHAT_EVENT_TYPES')
-if (!pyEventTypes) {
-  console.error('在 chat.py 里找不到 CHAT_EVENT_TYPES —— 契约文件结构变了，请更新本脚本。')
-  process.exit(2)
-}
-
-const pyClasses = [...chatPy.matchAll(/^class (\w+)\(EventBase\):/gm)].map((m) => m[1])
-const pyEvents = new Map()
-for (const className of pyClasses) {
-  const body = pythonClassBody(chatPy, className)
-  const typeLiteral = /type: *Literal\["([^"]+)"\]/.exec(body)?.[1]
-  if (!typeLiteral) continue
-  pyEvents.set(typeLiteral, { className, fields: pythonFields(body) })
-}
-
-const missingClasses = pyEventTypes.filter((type) => !pyEvents.has(type))
-if (missingClasses.length) {
-  fail(`chat.py 的 CHAT_EVENT_TYPES 里有 ${missingClasses.join(', ')}，但没有对应的 EventBase 子类`)
-}
+// 两条通道不能撞名（同一个事件类型出现在两处就无法判断该按谁分发）
+const allPyTypes = pyChannels.flatMap((c) => c.py.types)
+const duplicated = allPyTypes.filter((type, index) => allPyTypes.indexOf(type) !== index)
+if (duplicated.length) fail(`两条通道共用了事件类型：${[...new Set(duplicated)].join(', ')}`)
 
 const pyStage = pythonStrEnumMembers(basePy, 'Stage')
 const pyActivity = pythonStrEnumMembers(basePy, 'ActivityKind')
@@ -209,12 +252,17 @@ function tsValueArray(name) {
   return match ? [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : null
 }
 
-const tsEventTypes = tsArray('EVENT_TYPES')
-const tsEventMap = tsMap('ChatEventMap')
-
-if (!tsEventTypes || !tsEventMap) {
-  console.error(`在 ${TS} 里找不到 EVENT_TYPES / ChatEventMap —— 镜像文件结构变了，请更新本脚本。`)
-  process.exit(2)
+const tsChannels = new Map()
+for (const channel of pyChannels) {
+  const types = tsArray(channel.tsTypes)
+  const map = tsMap(channel.tsMap)
+  if (!types || !map) {
+    console.error(
+      `在 ${TS} 里找不到 ${channel.tsTypes} / ${channel.tsMap} —— 镜像文件结构变了，请更新本脚本。`,
+    )
+    process.exit(2)
+  }
+  tsChannels.set(channel.key, { types, map })
 }
 
 // ---------------------------------------------------------------------------
@@ -228,23 +276,34 @@ function compareSets(label, expected, actual) {
   if (extra.length) fail(`${label}：TS 多出 ${extra.join(', ')}`)
 }
 
-compareSets('事件类型', pyEventTypes, tsEventTypes)
-compareSets(
-  '事件类型（ChatEventMap）',
-  pyEventTypes,
-  tsEventMap.map(([type]) => type),
-)
+for (const channel of pyChannels) {
+  const tsSide = tsChannels.get(channel.key)
+  const py = channel.py
 
-// 每一种事件的字段
-for (const [type, { className, fields }] of pyEvents) {
-  const tsName = tsEventMap.find(([t]) => t === type)?.[1]
-  if (!tsName) continue
-  const tsFields = tsInterface(tsName)
-  if (!tsFields) {
-    fail(`事件 ${type}：TS 里找不到 interface ${tsName}`)
-    continue
+  // 事件清单：TS 的常量数组与 type → 事件 的映射表都要与 python 一致
+  compareSets(`${channel.key} 事件类型（${channel.tsTypes}）`, py.types, tsSide.types)
+  compareSets(
+    `${channel.key} 事件类型（${channel.tsMap}）`,
+    py.types,
+    tsSide.map.map(([type]) => type),
+  )
+
+  // 每一种事件的字段
+  for (const [type, { className, fields }] of py.events) {
+    const tsName = tsSide.map.find(([t]) => t === type)?.[1]
+    if (!tsName) continue
+    const tsFields = tsInterface(tsName)
+    if (!tsFields) {
+      fail(`事件 ${type}：TS 里找不到 interface ${tsName}`)
+      continue
+    }
+    compareSets(`事件 ${type} 的字段（${className}）`, fields, tsFields)
   }
-  compareSets(`事件 ${type} 的字段（${className}）`, fields, tsFields)
+}
+
+// 运行时的"这是不是本契约的事件"过滤器：两条通道各一个，少了就静默丢帧
+for (const name of ['isChatEventType', 'isExploreEventType']) {
+  if (!new RegExp(`export function ${name}\\b`).test(ts)) fail(`TS 里缺少 ${name}`)
 }
 
 // 嵌套模型
@@ -293,10 +352,17 @@ compareSets('RETRYABLE_ERRORS', pyRetryable ?? [], tsValueArray('RETRYABLE_ERROR
 
 if (notes.length) for (const note of notes) console.log(`ℹ ${note}`)
 
+/** 报告里的路径尽量相对仓库根，好读；指到别处时保留绝对路径。 */
+function rel(path) {
+  return path.startsWith(`${repoRoot}/`) ? path.slice(repoRoot.length + 1) : path
+}
+
 if (problems.length === 0) {
-  console.log(`✔ 事件契约无漂移（${pyEventTypes.length} 种事件，${pyModels.size} 个模型）`)
-  console.log(`  python: src/dbchat/events/chat.py + base.py`)
-  console.log(`  ts:     ${TS.replace(`${repoRoot}/`, '')}`)
+  const total = allPyTypes.length
+  const detail = pyChannels.map((c) => `${c.key} ${c.py.types.length}`).join(' + ')
+  console.log(`✔ 事件契约无漂移（${detail} = ${total} 种事件，${pyModels.size} 个模型）`)
+  console.log(`  python: ${pyChannels.map((c) => rel(c.py.path)).join(' + ')} + ${rel(BASE_PY)}`)
+  console.log(`  ts:     ${rel(TS)}`)
   process.exit(0)
 }
 

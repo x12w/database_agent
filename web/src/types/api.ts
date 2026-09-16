@@ -93,26 +93,5 @@ export interface AdminQuestionsResponse {
   profile_id?: string
 }
 
-/** 探索流（`GET /api/admin/explore-database`）的非契约事件，按旧实现建模。 */
-export interface ExploreProgressEvent {
-  phase?: string
-  title?: string
-  status?: string
-  detail?: string
-}
-
-export interface ExploreQuestionEvent {
-  question_id: string
-  table_name: string
-  column_name?: string
-  question: string
-  sample_values?: string[]
-  agent_guess?: string
-}
-
-export interface ExploreDoneEvent {
-  status?: string
-  questions_submitted?: number
-  skipped?: number
-  message?: string
-}
+// 探索流（`GET /api/admin/explore-database`）的事件**不在这里**：它是契约事件，
+// 形状见 `types/events.ts`（镜像 `src/dbchat/events/explore.py`）。

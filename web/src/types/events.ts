@@ -1,12 +1,17 @@
 /**
  * 事件契约的 TypeScript 镜像。
  *
- * 手写镜像自 `src/dbchat/events/chat.py` + `src/dbchat/events/base.py`。
+ * 手写镜像自 `src/dbchat/events/chat.py`（聊天通道）、
+ * `src/dbchat/events/explore.py`（探索通道）与 `src/dbchat/events/base.py`。
  * 漂移由 `node scripts/check-types.mjs` 检查（读 pydantic 模型源码，不依赖 Python）。
  *
  * 约定：线上事件的字段**永远存在**（后端 `model_dump_json(exclude_none=False)`），
  * 可空字段是 `T | null` 而不是可选属性 —— 这样前端不会因为 `undefined` 与 `null`
  * 混淆而写出两套分支。
+ *
+ * 两条通道的差别是**刻意的**：聊天事件的读者是提问的普通用户，字段里没有表名列名；
+ * 探索事件的读者是管理员，必须看到表名、列名、样本值与 agent 的推测。因此探索
+ * 事件里出现这些内容不是泄漏，而是契约要求。
  */
 
 // ---------------------------------------------------------------------------
@@ -229,7 +234,7 @@ export type ChatEvent = ChatEventMap[ChatEventType]
 export type Of<T extends ChatEventType> = ChatEventMap[T]
 
 /**
- * 穷尽性检查。事件存储的分发 switch 里用它兜底：
+ * 穷尽性检查。两条通道的分发 switch 都用它兜底：
  * 后端新增一个事件而前端没处理时，`ev` 无法收窄成 `never`，编译失败。
  */
 export function assertNever(value: never, context = 'chat event'): never {
@@ -239,4 +244,92 @@ export function assertNever(value: never, context = 'chat event'): never {
 /** 运行时判断一个未知的 SSE 载荷是不是本契约里的事件。 */
 export function isChatEventType(value: unknown): value is ChatEventType {
   return typeof value === 'string' && (EVENT_TYPES as readonly string[]).includes(value)
+}
+
+// ---------------------------------------------------------------------------
+// 探索通道（explore.py）
+//
+// 与聊天通道分开：这条通道的读者是**管理员**，所以它**必须**携带表名、列名、
+// 样本值、上下文与 agent 的推测 —— 否则管理员无从判断该怎么回答。
+// ---------------------------------------------------------------------------
+
+/** 探索通道的全部事件类型，与 explore.py 的 `EXPLORE_EVENT_TYPES` 一致。 */
+export const EXPLORE_EVENT_TYPES = [
+  'explore.started',
+  'explore.progress',
+  'explore.question',
+  'explore.finished',
+  'explore.failed',
+] as const
+
+export type ExploreEventType = (typeof EXPLORE_EVENT_TYPES)[number]
+
+export interface ExploreStartedEvent extends EventBase {
+  type: 'explore.started'
+  profile: ProfileView
+  /** 本次计划检查的候选列数（含义不明的编码列）。 */
+  candidates: number
+}
+
+export interface ExploreProgressEvent extends EventBase {
+  type: 'explore.progress'
+  done: number
+  total: number
+  /** 当前正在检查的表（管理员视角，可见）。 */
+  current_table: string | null
+  /** 一句话说明正在做什么。 */
+  note: string | null
+}
+
+/** 一个含义不明的列 —— 管理员据此判断是"同意"还是"修正"。 */
+export interface ExploreQuestionEvent extends EventBase {
+  type: 'explore.question'
+  question_id: string
+  table: string
+  column: string
+  question: string
+  /** agent 的推测（可能是错的）。 */
+  agent_guess: string
+  /** 用来说服自己的样本值。 */
+  samples: string[]
+  /** 该列在表中的样例上下文：列名 + 若干行的相关取值。 */
+  context_columns: string[]
+  context_rows: string[][]
+  /** 历史提问去重命中时携带已有答案，而不是重复提问。 */
+  existing_answer: string | null
+}
+
+export interface ExploreFinishedEvent extends EventBase {
+  type: 'explore.finished'
+  candidates_found: number
+  questions_asked: number
+  /** 大于 0 时**不是**"完成"，而是"等待管理员回答"。 */
+  pending_count: number
+  elapsed_ms: number
+}
+
+export interface ExploreFailedEvent extends EventBase {
+  type: 'explore.failed'
+  code: ErrorCode
+  message: string
+  error_detail: string | null
+}
+
+/** `type` → 事件的映射。新增后端事件时这里缺一条，使用处就会编译失败。 */
+export interface ExploreEventMap {
+  'explore.started': ExploreStartedEvent
+  'explore.progress': ExploreProgressEvent
+  'explore.question': ExploreQuestionEvent
+  'explore.finished': ExploreFinishedEvent
+  'explore.failed': ExploreFailedEvent
+}
+
+export type ExploreEvent = ExploreEventMap[ExploreEventType]
+
+/** 按 `type` 取事件类型：`ExploreOf<'explore.failed'>` = `ExploreFailedEvent`。 */
+export type ExploreOf<T extends ExploreEventType> = ExploreEventMap[T]
+
+/** 运行时判断一个未知的 SSE 载荷是不是探索通道的事件。 */
+export function isExploreEventType(value: unknown): value is ExploreEventType {
+  return typeof value === 'string' && (EXPLORE_EVENT_TYPES as readonly string[]).includes(value)
 }

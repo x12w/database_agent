@@ -147,7 +147,17 @@ async function reloadPending(): Promise<void> {
         </div>
       </template>
 
-      <ExplorePanel v-else :profile-id="profileId" @questions-changed="reloadPending" />
+      <!--
+        探索面板用 v-show 而不是 v-else：切到别的标签页时不能把正在跑的探索流
+        拆掉 —— 连接、进度与已经冒出来的卡片都在它身上。旧面板的标签页只是切
+        CSS，天然是"一直在场"的；v-if 会在切走时销毁组件，流还在跑却没人收，
+        切回来还是一片空白。
+      -->
+      <ExplorePanel
+        v-show="tab === 'explore'"
+        :profile-id="profileId"
+        @questions-changed="reloadPending"
+      />
     </main>
   </div>
 </template>

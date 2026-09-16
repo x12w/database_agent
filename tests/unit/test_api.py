@@ -20,6 +20,7 @@ import pytest
 from fastapi.routing import APIRoute
 from pydantic import TypeAdapter
 
+from dbchat.api.failures import ApiFailure
 from dbchat.app import create_app
 from dbchat.config import Settings
 from dbchat.db.connection import ConnectionManager, ConnectionProbe
@@ -506,6 +507,57 @@ async def test_chat_stream_round_trips_scripted_events(app, ctx, manager: FakeCo
         {"role": "user", "content": "有多少学生？"},
         {"role": "assistant", "content": "共 42 人"},
     ]
+
+
+async def test_switching_database_rebinds_the_conversation(app, ctx, client: httpx.AsyncClient):
+    """同一会话 id 换库时：改归属、丢旧库历史 —— 绝不把 A 库的问答当 B 库上下文。"""
+    from dbchat.di import ensure_conversation
+
+    default_profile = await ctx.resolve_profile(None)
+    await ensure_conversation(
+        ctx, session_id="sess-switch", profile_id=default_profile.id, table_filter=None
+    )
+    await ctx.conversations.astore_message("sess-switch", "user", "A 库的问题")
+
+    await client.post(
+        "/api/databases", json={"name": "另一个库", "database": "other", "db_type": "mysql"}
+    )
+    other = [p for p in await ctx.profiles.alist_all() if p.database == "other"][0]
+
+    class Echo:
+        async def run(self, *, message: str, ctx) -> AsyncIterator[ChatEvent]:  # noqa: ANN001
+            yield RunFinished(seq=1, ts=1.0, run_id=ctx.run_id, answer_markdown="B 库回答")
+
+    app.dependency_overrides[get_chat_use_case] = Echo
+    await client.get(
+        "/api/chat/stream",
+        params={"message": "B 库的问题", "session_id": "sess-switch", "db_id": other.id},
+    )
+
+    rebound = await ctx.conversations.aget("sess-switch")
+    assert rebound is not None
+    assert rebound.id == "sess-switch"  # 会话 id 就是前端的 session_id
+    assert rebound.profile_id == other.id
+    # 旧库的历史已丢，只剩这一轮：A 库的提问不再进 B 库的上下文。
+    assert await ctx.conversations.ahistory("sess-switch") == [
+        {"role": "user", "content": "B 库的问题"},
+        {"role": "assistant", "content": "B 库回答"},
+    ]
+
+
+async def test_overlong_message_is_rejected_before_anything_else():
+    """超长提问在依赖层就被拒 —— 不必真的发一个 8KB 的 URL 出去。"""
+    from dbchat.api.routes.chat import MAX_MESSAGE_CHARS, validated_message
+
+    class _Run:
+        run_id = "run-x"
+
+    with pytest.raises(ApiFailure) as caught:
+        await validated_message(_Run(), message="问" * (MAX_MESSAGE_CHARS + 1))
+
+    assert caught.value.code is ErrorCode.VALIDATION
+    assert "问题过长" in caught.value.message
+    assert await validated_message(_Run(), message="正常提问") == "正常提问"
 
 
 async def test_chat_stream_records_failed_turn(app, ctx):

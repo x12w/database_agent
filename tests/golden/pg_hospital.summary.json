@@ -1,0 +1,39 @@
+{
+  "event_counts": {
+    "status": 10,
+    "progress": 25,
+    "tool_call": 15,
+    "tool_result": 15,
+    "text": 11,
+    "done": 1
+  },
+  "sql": [
+    "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+    "SELECT table_name AS \"表名\" FROM information_schema.tables WHERE table_schema = 'hospital_db' AND table_type = 'BASE TABLE' ORDER BY table_name",
+    "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' ORDER BY table_schema, table_name",
+    "SELECT table_name AS \"表名\" FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name",
+    "SELECT table_name AS \"表名\"\nFROM information_schema.tables\nWHERE table_schema = 'hospital_db'\nORDER BY table_name",
+    "SELECT table_schema, table_name\nFROM information_schema.tables\nWHERE table_schema NOT IN ('information_schema', 'pg_catalog')\nORDER BY table_schema, table_name",
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'hospital_db' ORDER BY table_name;",
+    "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' ORDER BY table_schema, table_name;",
+    "SELECT table_name\nFROM information_schema.tables\nWHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')\nORDER BY table_name"
+  ],
+  "tools": [
+    "get_schema_summary",
+    "query_database",
+    "get_schema_summary",
+    "query_database",
+    "query_database",
+    "query_database",
+    "get_schema_summary",
+    "query_database",
+    "query_database",
+    "get_schema_summary",
+    "query_database",
+    "query_database",
+    "get_schema_summary",
+    "query_database",
+    "run_python"
+  ],
+  "answer": "这个数据库中共有 10 张表，分别是：appointments、departments、doctors、drugs、inpatient_records、medical_records、patients、prescription_items、prescriptions、wards。\n\n来源: 数据库查询"
+}

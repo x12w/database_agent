@@ -1,0 +1,14 @@
+{"event": "status", "data": {"type": "status", "phase": "schema_check", "message": "加载数据库结构...", "message_id": "025ba569"}}
+{"event": "status", "data": {"type": "status", "phase": "schema_check", "message": "数据库结构加载完成（6 张表）", "message_id": "025ba569"}}
+{"event": "status", "data": {"type": "status", "phase": "classify", "message": "分析问题类型...", "message_id": "025ba569"}}
+{"event": "status", "data": {"type": "status", "phase": "classify", "message": "分类结果: DOC_QUESTION", "message_id": "025ba569"}}
+{"event": "status", "data": {"type": "status", "phase": "fast_path", "message": "结构类问题，直接返回缓存数据...", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": "## training_exam_db 数据库架构\n\n共 **6** 张表，**6** 个外键关系：\n\n| 表名 | 行数 | 列数 | 说明 |\n|------|------|------|----", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": "--|\n| employee | 15 | 13 | 人员信息表 |\n| exam | 8 | 17 | 考试信息表 |\n| exam_result | 27 | 16 | 考试成绩表 |\n| tra", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": "ining_course | 8 | 10 | 培训课程表 |\n| training_enrollment | 38 | 17 | 人员培训记录表 |\n| training_session | 12 ", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": "| 19 | 培训场次表 |\n\n### 表关系\n\n- `exam`.`session_id` → `training_session`.`id`\n- `exam_result`.`employee_i", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": "d` → `employee`.`id`\n- `exam_result`.`exam_id` → `exam`.`id`\n- `training_enrollment`.`employee_id` →", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": " `employee`.`id`\n- `training_enrollment`.`session_id` → `training_session`.`id`\n- `training_session`", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": ".`course_id` → `training_course`.`id`\n\n### 数据分布\n\n\n### 探索报告\n好的，让我系统地探索这个数据库。首先列出所有表。有6张表，接下来同时查看所有表的结", "message_id": "025ba569"}}
+{"event": "text", "data": {"type": "text", "text": "构：\n\n*来源: 数据库 schema 缓存*", "message_id": "025ba569"}}
+{"event": "done", "data": {"type": "done", "classification": "DOC_QUESTION", "db_queries": 0, "response_time_ms": 3, "message": "## training_exam_db 数据库架构\n\n共 **6** 张表，**6** 个外键关系：\n\n| 表名 | 行数 | 列数 | 说明 |\n|------|------|------|------|\n| employee | 15 | 13 | 人员信息表 |\n| exam | 8 | 17 | 考试信息表 |\n| exam_result | 27 | 16 | 考试成绩表 |\n| training_course | 8 | 10 | 培训课程表 |\n| training_enrollment | 38 | 17 | 人员培训记录表 |\n| training_session | 12 | 19 | 培训场次表 |\n\n### 表关系\n\n- `exam`.`session_id` → `training_session`.`id`\n- `exam_result`.`employee_id` → `employee`.`id`\n- `exam_result`.`exam_id` → `exam`.`id`\n- `training_enrollment`.`employee_id` → `employee`.`id`\n- `training_enrollment`.`session_id` → `training_session`.`id`\n- `training_session`.`course_id` → `training_course`.`id`\n\n### 数据分布\n\n\n### 探索报告\n好的，让我系统地探索这个数据库。首先列出所有表。有6张表，接下来同时查看所有表的结构：\n\n*来源: 数据库 schema 缓存*", "message_id": "025ba569"}}

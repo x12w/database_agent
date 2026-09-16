@@ -1,0 +1,22 @@
+{
+  "event_counts": {
+    "status": 5,
+    "progress": 7,
+    "tool_call": 6,
+    "tool_result": 6,
+    "text": 25,
+    "done": 1
+  },
+  "sql": [
+    "SELECT DISTINCT `employee`.`employee_name` AS `员工姓名`, `employee`.`department_name` AS `部门`\nFROM `employee`\nINNER JOIN `training_enrollment` ON `employee`.`id` = `training_enrollment`.`employee_id`\nORDER BY `employee`.`department_name`, `employee`.`employee_name`\nLIMIT 200"
+  ],
+  "tools": [
+    "get_schema_summary",
+    "get_table_detail",
+    "get_table_detail",
+    "analyze_column",
+    "analyze_column",
+    "query_database"
+  ],
+  "answer": "参加过培训的员工共14人，名单及部门如下：\n\n- 李四（人事部）\n- 陈十二（人事部）\n- 周八（安全部）\n- 黄十四（安全部）\n- 何十七（技术部）\n- 刘十三（技术部）\n- 吴九（技术部）\n- 张三（技术部）\n- 赵六（技术部）\n- 钱十一（技术部）\n- 孙七（管理部）\n- 林十五（管理部）\n- 王五（财务部）\n- 郑十（财务部）\n\n来源: 数据库查询"
+}

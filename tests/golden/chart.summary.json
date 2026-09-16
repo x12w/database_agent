@@ -1,0 +1,25 @@
+{
+  "event_counts": {
+    "status": 6,
+    "progress": 8,
+    "tool_call": 8,
+    "tool_result": 8,
+    "chart": 1,
+    "text": 41,
+    "done": 1
+  },
+  "sql": [
+    "SELECT `exam`.`exam_name` AS 考试名称, AVG(`exam_result`.`score`) AS 平均分, COUNT(`exam_result`.`score`) AS 参考人数\nFROM `exam_result`\nINNER JOIN `exam` ON `exam_result`.`exam_id` = `exam`.`id`\nGROUP BY `exam`.`id`, `exam`.`exam_name`\nORDER BY 平均分 DESC"
+  ],
+  "tools": [
+    "get_schema_summary",
+    "get_table_detail",
+    "get_table_detail",
+    "analyze_column",
+    "analyze_column",
+    "analyze_column",
+    "query_database",
+    "run_python"
+  ],
+  "answer": "根据查询结果，已生成各门考试平均分的柱状图，如下图所示：\n\n![各门考试平均分柱状图]()\n\n图中展示了7门考试的平均分对比，其中**2025年安全生产培训补考**平均分最高（86.000000），**2023年消防安全培训考试**平均分最低（70.000000）。各考试平均分从高到低依次为：\n\n- 2025年安全生产培训补考：86.000000\n- 2024年网络安全培训考试：85.500000\n- 2025年Python培训阶段考试：78.750000\n- 2025年安全生产培训结业考试：76.600000\n- 2025年劳动法培训结业考试：76.600000\n- 2025年管理技能培训结业考试：75.666667\n- 2023年消防安全培训考试：70.000000\n\n来源: 数据库查询"
+}

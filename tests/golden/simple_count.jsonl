@@ -1,0 +1,18 @@
+{"event": "status", "data": {"type": "status", "phase": "schema_check", "message": "加载数据库结构...", "message_id": "771556c8"}}
+{"event": "status", "data": {"type": "status", "phase": "schema_check", "message": "数据库结构加载完成（6 张表）", "message_id": "771556c8"}}
+{"event": "status", "data": {"type": "status", "phase": "classify", "message": "分析问题类型...", "message_id": "771556c8"}}
+{"event": "status", "data": {"type": "status", "phase": "classify", "message": "分类结果: DATA_QUESTION", "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "🧠", "title": "Orchestrator 分析中", "status": "running", "detail": "问题分类: DATA_QUESTION | 数据库: training_exam_db | 6 张表", "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "🔍", "title": "开始查询", "status": "running", "detail": "最多 5 轮迭代", "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "⚡", "title": "简单查询", "status": "running", "detail": "跳过分析，直接生成 SQL", "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "📋", "title": "分析完成", "status": "done", "detail": "无特定计划，直接查询", "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "🔍", "title": "SQL Agent", "status": "running", "detail": "生成并执行查询...", "message_id": "771556c8"}}
+{"event": "tool_call", "data": {"type": "tool_call", "tool": "query_database", "input": {"sql": "SELECT COUNT(*) AS `员工总数` FROM `employee`"}, "tool_id": "call_76q2w21p", "message_id": "771556c8"}}
+{"event": "tool_result", "data": {"type": "tool_result", "tool": "query_database", "output": "查询返回 1 行，耗时 17.2ms。\n\n员工总数\n----\n15", "success": true, "raw_result": {"columns": ["员工总数"], "rows": [[15]], "row_count": 1, "execution_ms": 17.2, "schema_warnings": ["列 '员工总数' 在引用表中未找到，可能是 SQL 函数或别名"]}, "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "✅", "title": "第 1 轮完成", "status": "done", "detail": "共 1 条结果", "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "✅", "title": "查询完成", "status": "done", "detail": "共 0 次查询, 1 条结果, 39747ms", "message_id": "771556c8"}}
+{"event": "progress", "data": {"type": "progress", "phase": "💬", "title": "NL Agent", "status": "running", "detail": "生成自然语言回答...", "message_id": "771556c8"}}
+{"event": "text", "data": {"type": "text", "text": "一共有15名", "message_id": "771556c8"}}
+{"event": "text", "data": {"type": "text", "text": "员工。", "message_id": "771556c8"}}
+{"event": "text", "data": {"type": "text", "text": "\n\n来源: 数据库查询", "message_id": "771556c8"}}
+{"event": "done", "data": {"type": "done", "classification": "DATA_QUESTION", "db_queries": 0, "response_time_ms": 44159, "message": "一共有15名员工。\n\n来源: 数据库查询", "images": [], "message_id": "771556c8"}}

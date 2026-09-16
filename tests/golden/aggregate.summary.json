@@ -1,0 +1,23 @@
+{
+  "event_counts": {
+    "status": 5,
+    "progress": 19,
+    "tool_call": 4,
+    "tool_result": 4,
+    "chart": 1,
+    "text": 19,
+    "done": 1
+  },
+  "sql": [
+    "SELECT \n  `tc`.`course_name` AS '课程名称',\n  COUNT(`te`.`id`) AS '报名人数'\nFROM `training_course` `tc`\nINNER JOIN `training_session` `ts` ON `ts`.`course_id` = `tc`.`id`\nINNER JOIN `training_enrollment` `te` ON `te`.`session_id` = `ts`.`id`\nGROUP BY `tc`.`id`, `tc`.`course_name`\nORDER BY COUNT(`te`.`id`) DESC",
+    "SELECT `tc`.`course_name` AS '课程名称', COUNT(`te`.`id`) AS '报名人数'\nFROM `training_course` `tc`\nINNER JOIN `training_session` `ts` ON `ts`.`course_id` = `tc`.`id`\nINNER JOIN `training_enrollment` `te` ON `te`.`session_id` = `ts`.`id`\nGROUP BY `tc`.`id`, `tc`.`course_name`\nORDER BY COUNT(`te`.`id`) DESC\nLIMIT 200",
+    "SELECT `tc`.`course_name` AS `课程名称`, COUNT(`te`.`id`) AS `报名人数`\nFROM `training_enrollment` `te`\nINNER JOIN `training_session` `ts` ON `te`.`session_id` = `ts`.`id`\nINNER JOIN `training_course` `tc` ON `ts`.`course_id` = `tc`.`id`\nGROUP BY `tc`.`id`, `tc`.`course_name`\nORDER BY `报名人数` DESC"
+  ],
+  "tools": [
+    "query_database",
+    "query_database",
+    "query_database",
+    "run_python"
+  ],
+  "answer": "各培训课程报名人数从多到少排列如下：\n\n1. 安全生产基础培训：12人 \n2. 消防安全培训：7人 \n3. 网络安全意识培训：5人 \n4. Python数据分析进阶：4人 \n5. 劳动法律法规培训：4人 \n6. 中层管理技能提升：3人 \n7. 急救知识与技能培训：3人 \n\n来源: 数据库查询"
+}

@@ -1,0 +1,17 @@
+{
+  "event_counts": {
+    "status": 4,
+    "progress": 8,
+    "tool_call": 1,
+    "tool_result": 1,
+    "text": 3,
+    "done": 1
+  },
+  "sql": [
+    "SELECT COUNT(*) AS `员工总数` FROM `employee`"
+  ],
+  "tools": [
+    "query_database"
+  ],
+  "answer": "一共有15名员工。\n\n来源: 数据库查询"
+}

@@ -1,0 +1,33 @@
+{
+  "event_counts": {
+    "status": 6,
+    "progress": 12,
+    "tool_call": 14,
+    "tool_result": 14,
+    "text": 56,
+    "done": 1
+  },
+  "sql": [
+    "SELECT `ts`.`session_no`, `ts`.`session_name`, `tc`.`course_name`, `ts`.`start_date`, `ts`.`end_date`, `ts`.`session_status`\nFROM `training_session` AS `ts`\nINNER JOIN `training_course` AS `tc` ON `ts`.`course_id` = `tc`.`id`\nWHERE `ts`.`training_year` = 2026\nORDER BY `ts`.`start_date`\nLIMIT 200",
+    "SELECT `training_year`, COUNT(*) AS `场次数`\nFROM `training_session`\nGROUP BY `training_year`\nORDER BY `training_year` DESC",
+    "SELECT `session_no`, `session_name`, `training_year`, `start_date`, `end_date`, `session_status`, `trainer_name`, `training_location`\nFROM `training_session`\nWHERE `training_year` = 2026\nORDER BY `start_date` ASC",
+    "SELECT `session_no`, `session_name`, `training_year`, `start_date`, `end_date`, `session_status`, `trainer_name`, `training_location`\nFROM `training_session`\nWHERE `training_year` = 2025\nORDER BY `start_date` ASC"
+  ],
+  "tools": [
+    "get_schema_summary",
+    "get_table_detail",
+    "get_table_detail",
+    "analyze_column",
+    "analyze_column",
+    "analyze_column",
+    "query_database",
+    "query_database",
+    "get_schema_summary",
+    "get_table_detail",
+    "analyze_column",
+    "analyze_column",
+    "query_database",
+    "query_database"
+  ],
+  "answer": "根据查询结果，2025年共有6场培训，具体如下：\n\n1. **TS-2025-002**：2025年第一期中层管理技能提升培训，2025-03-01至2025-03-04，已结束，讲师张管理，地点外部培训中心\n2. **TS-2025-005**：2025年劳动法律法规培训，2025-04-10至2025-04-11，已结束，讲师赵法律，地点公司A栋301会议室\n3. **TS-2025-001**：2025年第一期安全生产基础培训，2025-05-10至2025-05-11，已结束，讲师李安全，地点公司A栋301会议室\n4. **TS-2025-003**：2025年Python数据分析进阶培训，2025-06-01至2025-06-05，进行中，讲师陈数据，地点公司B栋301机房\n5. **TS-2025-006**：2025年质量管理体系内审员培训，2025-07-15至2025-07-17，计划中，讲师周质量，地点外部培训中心\n6. **TS-2025-004**：2025年网络安全意识培训，2025-09-01至2025-09-01，报名中，讲师王网络，地点公司B栋201培训室\n\n来源: 数据库查询"
+}

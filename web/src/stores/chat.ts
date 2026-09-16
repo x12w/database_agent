@@ -194,9 +194,17 @@ export function createChatStore(options: ChatStoreOptions = {}): ChatStore {
     }
   }
 
+  /**
+   * 新建一轮并把 `run` 交给流处理。
+   *
+   * **必须返回响应式代理，不能返回原始对象。** 数组塞进 `reactive` 之后，
+   * 通过原始引用修改嵌套字段不会触发重渲染 —— 步骤流因此一直是空的、
+   * 状态永远停在"运行中"。这个坑很难从类型上发现：`ChatTurn` 的类型
+   * 对代理和原始对象是一样的。
+   */
   function attachRun(text: string, run: RunState): ChatTurn {
     const session = activeSession.value
-    const turn: ChatTurn = { id: newId(), text, at: Date.now(), run }
+    const turn = reactive<ChatTurn>({ id: newId(), text, at: Date.now(), run })
     session.turns.push(turn)
     session.updatedAt = Date.now()
     if (session.title === '新会话' || session.turns.length === 1) {

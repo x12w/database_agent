@@ -1,7 +1,7 @@
 """结果评估的行为判定 —— 空结果、重试理由、问题形状。
 
-三个缺陷都是从 `tests/golden-new/*.jsonl` 的真实抓取里读出来的，测试里的
-字符串也直接取自那些抓取，不是编造的：
+两个缺陷 + 一条不能回归的护栏，都是从 `tests/golden-new/*.jsonl` 的真实
+抓取里读出来的，测试里的字符串也直接取自那些抓取，不是编造的：
 
 * **空结果不认"没有"**（`empty_result.jsonl`）："有没有叫张三丰的员工参加过
   考试？"是非问句，0 行就是答案；旧评估器无条件要求重试，5 轮烧掉 173 秒，
@@ -178,6 +178,30 @@ async def test_json_verdict_is_parsed() -> None:
                                      ran_any_query=True)
     assert outcome.satisfactory is True
     assert "已覆盖全部考试" in outcome.reason
+
+
+@pytest.mark.asyncio
+async def test_truncated_json_verdict_is_recovered() -> None:
+    """被 token 上限截断的 JSON 不能当成"答非所问"。
+
+    截断一律退到"有数据即充分"会把**真正的重试判定静默丢掉** ——
+    实测中文 reason+hint 顶满 200 token 时就会出现这种回复。
+    """
+    truncated = '{"satisfied": false, "reason": "结果只覆盖一个部门", "hint": "请按部门分组'
+    llm = _LLM([truncated])
+    outcome = await evaluate_results([_Result(4)], COUNT_QUESTION, llm=llm, ran_any_query=True)
+
+    assert outcome.satisfactory is False
+    assert outcome.hint == "请按部门分组"
+    assert outcome.reason == "结果只覆盖一个部门"
+
+
+@pytest.mark.asyncio
+async def test_truncated_json_without_actionable_hint_is_satisfied() -> None:
+    """截断 + 建议不可执行 —— 仍然按已充分处理（两道防线各自生效）。"""
+    llm = _LLM(['{"satisfied": false, "reason": "查询已返回各考试平均分", "hint": "'])
+    outcome = await evaluate_results([_Result(7)], COUNT_QUESTION, llm=llm, ran_any_query=True)
+    assert outcome.satisfactory is True
 
 
 @pytest.mark.asyncio

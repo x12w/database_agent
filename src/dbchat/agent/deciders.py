@@ -28,8 +28,14 @@ agent 每轮只调 `get_schema_summary`，评估器却一直提示"查询未返�
 **缺陷修复（重试理由自相矛盾）**：评估器只认同一个前缀 ——
 `deciders.py:180` 判断 `startswith("RETRY:")` 后把剩余文本原样当建议，
 于是 `RETRY: 查询已返回各考试平均分`（`chart` 用例第 2 轮的原文）也照单
-全收，白烧一整轮（约 50 秒）。现在解析容忍 JSON / 前缀两种形状，
-并在"重试建议里没有任何可执行改动"时按已充分处理。
+全收，白烧一整轮（约 50 秒）。现在改为请模型回一个 JSON 对象
+（`{"satisfied", "reason", "hint"}`），解析容忍三种形状（完整 JSON、
+被 token 上限截断的 JSON、历史前缀协议），并在"理由是成功陈述"或
+"建议里没有任何可执行改动"时按已充分处理。
+
+**注意 token 预算**：改问 JSON 之后 `_DECIDE_MAX_TOKENS` 从 200 提到 400 ——
+中文 reason + hint 顶满上限时 JSON 会被截断，而截断的回复一旦落到
+"答非所问即为充分"，真正的重试判定就被静默丢掉了（实测已贴上限）。
 """
 
 from __future__ import annotations
@@ -55,7 +61,12 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: 评估与规划只需要一行结论。
-_DECIDE_MAX_TOKENS = 200
+#:
+#: 评估器改问 JSON 后 200 不够：中文 reason + hint 很容易顶满，
+#: 截断的 JSON 解析不出来，就会被当成"答非所问 → 有数据即充分"，
+#: 于是**真正的重试判定被静默丢掉**。实测同一问题 200 tokens 时
+#: 回复已贴着上限。留一倍余量。
+_DECIDE_MAX_TOKENS = 400
 _PLAN_MAX_TOKENS = 150
 
 _EVALUATOR_SYSTEM = (
@@ -226,9 +237,18 @@ async def evaluate_results(
         "注意：查询已经执行过了（不是没查），所以重试建议应当针对查询口径，"
         "而不是要求再次确认表结构。\n\n"
         f"用户问题: {question}\n"
-        f"问题类型: {'是非/存在性 —— 答案可以是「没有」' if boolean else '数据/统计'}\n\n"
-        "查询结果:\n" + "\n".join(_summarize(results)) + "\n\n"
-        "只回复一个 JSON 对象，不要输出其他任何内容：\n"
+        f"问题类型: {'是非/存在性 —— 答案可以是「没有」' if boolean else '数据/统计'}\n"
+    )
+    if boolean:
+        prompt += (
+            "**这是是非问题**：只要已经有一条查询**针对该实体**执行过"
+            "（例如带 WHERE 条件的过滤查询），那么它返回 0 行就已经回答了问题 —— "
+            "结论是「没有」，应当 satisfied=true，不要因为「没找到」而要求重试。\n"
+            "只有在该实体根本没有被查过时才 satisfied=false。\n"
+        )
+    prompt += (
+        "\n查询结果:\n" + "\n".join(_summarize(results)) + "\n\n"
+        "只回复一个 JSON 对象，不要输出其他任何内容（reason 不超过 30 字，hint 不超过 60 字）：\n"
         '{"satisfied": true|false, "reason": "<一句话结论>", '
         '"hint": "<satisfied=false 时的具体改进建议；true 时留空>"}'
     )
@@ -289,10 +309,12 @@ async def evaluate_results(
 def _parse_verdict(text: str) -> tuple[bool, str, str] | None:
     """把评估器的回复解析成 `(satisfied, reason, hint)`；解析不了返回 None。
 
-    容忍两种形状（小模型两种都会给）：
+    容忍三种形状（小模型三种都会给）：
 
     1. JSON：`{"satisfied": true|false, "reason": "...", "hint": "..."}` —— 首选；
-    2. 历史前缀协议：`SATISFIED` / `RETRY: <建议>` —— 兼容旧提示词与桩客户端。
+    2. 被 token 上限截断的 JSON —— 按字段扫描取出结论（末字段的收尾引号
+       缺失也算）。截断不等于"答非所问"，丢掉真正的重试判定会静默少查一轮；
+    3. 历史前缀协议：`SATISFIED` / `RETRY: <建议>` —— 兼容旧提示词与桩客户端。
 
     判定不再挂在某一个前缀上：前缀只写 `RETRY`（无冒号）、大写小写、
     或者把 JSON 包在解释文字里，都能解析出来。
@@ -307,12 +329,35 @@ def _parse_verdict(text: str) -> tuple[bool, str, str] | None:
                 str(payload.get("hint") or "").strip(),
             )
 
+    scanned = _scan_verdict_fields(text)
+    if scanned is not None:
+        logger.info("评估器回复的 JSON 不完整，按字段扫描取值")
+        return scanned
+
     upper = text.upper().lstrip()
     if upper.startswith("SATISFIED"):
         return True, "", ""
     if upper.startswith("RETRY"):
         return False, "", text.lstrip()[5:].lstrip(":： \t").strip()
     return None
+
+
+#: 截断回复里的字段扫描。字符串字段的收尾引号**可选** —— 被截断的正是
+#: 最后那个字段（"hint": "请按部门分组 到这里就没了）。
+_SATISFIED_FIELD = re.compile(r'"satisfied"\s*:\s*(true|false)', re.IGNORECASE)
+_TEXT_FIELD = re.compile(r'"(?:reason|hint)"\s*:\s*"([^"]*)"?')
+
+
+def _scan_verdict_fields(text: str) -> tuple[bool, str, str] | None:
+    """从被截断的 JSON 里抠结论 —— 拿不到 `satisfied` 就返回 None。"""
+    match = _SATISFIED_FIELD.search(text)
+    if match is None:
+        return None
+    satisfied = match.group(1).lower() == "true"
+    fields = _TEXT_FIELD.findall(text)
+    reason = fields[0] if fields else ""
+    hint = fields[1] if len(fields) > 1 else ""
+    return satisfied, reason.strip(), hint.strip()
 
 
 def _first_json_object(text: str) -> dict | None:

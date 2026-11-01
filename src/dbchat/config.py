@@ -10,7 +10,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dbchat.domain.profile import DatabaseProfile, DialectKind, parse_dialect_kind
@@ -79,13 +79,20 @@ class Settings(BaseSettings):
     max_compute_iterations: int = 1
     max_visualization_iterations: int = 2
     #: 单次查询返回给 LLM 的最大行数。
-    query_row_limit: int = 200
+    query_row_limit: int = Field(default=200, ge=1, le=10000)
 
     # ---- 服务 ----
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
+    auth_admin_token: str = Field(default="", repr=False)
+    auth_user_token: str = Field(default="", repr=False)
     port: int = 8000
     #: 开发模式：CORS 放开、返回更详细的错误、由 Vite dev server 提供前端。
     debug: bool = False
+    desktop_mode: bool = False
+
+    @property
+    def preferences_file(self) -> Path:
+        return self.var_dir / "preferences.json"
 
     # ---- 展示策略 ----
     #: 是否把原始 SQL 作为可展开项发给前端。默认关闭 —— 用户要的是答案，
@@ -176,10 +183,20 @@ class Settings(BaseSettings):
         )
 
 
+_runtime_settings: Settings | None = None
+
+
+def configure_runtime(settings: Settings) -> None:
+    """Set process settings before constructing any desktop collaborators."""
+    global _runtime_settings
+    _runtime_settings = settings
+    get_settings.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """进程内单例配置。"""
-    return Settings()
+    return _runtime_settings if _runtime_settings is not None else Settings()
 
 
 def load_profiles(settings: Settings | None = None) -> list[DatabaseProfile]:

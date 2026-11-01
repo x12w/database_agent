@@ -19,6 +19,7 @@ from pydantic import TypeAdapter
 from starlette.requests import Request
 
 from dbchat.api import sse as api_sse
+from dbchat.api.auth import authorize
 from dbchat.app import create_app
 from dbchat.config import Settings
 from dbchat.db.connection import ConnectionManager
@@ -274,6 +275,7 @@ def use_case(ctx) -> HangingChatUseCase:
 @pytest.fixture
 def app(settings: Settings, ctx, use_case: HangingChatUseCase):
     application = create_app(settings, context=ctx, build_rag=False)
+    application.dependency_overrides[authorize] = lambda: "admin"
     application.dependency_overrides[get_chat_use_case] = lambda: use_case
     return application
 
@@ -317,6 +319,7 @@ async def test_run_that_finishes_normally_releases_lease(
     """对照组：跑完的运行同样归还租约，且两帧都通过契约发出。"""
     completing = HangingChatUseCase(ctx, hang=False)
     application = create_app(settings, context=ctx, build_rag=False)
+    application.dependency_overrides[authorize] = lambda: "admin"
     application.dependency_overrides[get_chat_use_case] = lambda: completing
 
     async with httpx.AsyncClient(

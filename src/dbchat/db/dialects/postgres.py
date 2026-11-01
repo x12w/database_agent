@@ -90,6 +90,9 @@ class PostgresDialect(Dialect):
     def import_driver(self) -> Any:
         return load_psycopg2()
 
+    def query_schemas(self, profile: DatabaseProfile) -> frozenset[str]:
+        return frozenset({"public"})
+
     def connect(self, profile: DatabaseProfile, *, timeout_s: int = 30) -> Any:
         psycopg2 = self.import_driver()
         try:
@@ -100,6 +103,7 @@ class PostgresDialect(Dialect):
                 password=profile.password,
                 dbname=profile.database or None,
                 connect_timeout=timeout_s,
+                options="-c default_transaction_read_only=on -c search_path=public",
             )
             conn.autocommit = True
             return conn

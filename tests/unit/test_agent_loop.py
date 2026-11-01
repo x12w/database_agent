@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
@@ -768,12 +769,19 @@ async def test_pipeline_query_count_and_projection() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pipeline_without_api_key_fails_with_llm_unavailable() -> None:
-    """没有 API key：明确失败，绝不退回模板 SQL（历史 limited mode 已删除）。"""
+@pytest.mark.parametrize("cached", [False, True])
+async def test_pipeline_without_api_key_fails_with_llm_unavailable(
+    monkeypatch: pytest.MonkeyPatch, cached: bool
+) -> None:
+    """数据查询缺少模型配置时立即失败，不连接数据库或退回模板 SQL。"""
     from dbchat.events.base import ErrorCode
     from dbchat.events.chat import RunFailed
     from dbchat.usecases.chat import ChatPipeline
 
+    load_schema = AsyncMock(side_effect=AssertionError("不应加载数据库结构"))
+    monkeypatch.setattr("dbchat.usecases.onboarding.build_schema", load_schema)
+    classify = AsyncMock(side_effect=AssertionError("不应调用分类模型"))
+    monkeypatch.setattr("dbchat.usecases.chat.classify", classify)
     llm = ScriptedLLM([[]], available=False)
     pipeline = ChatPipeline(
         settings=Settings(llm_api_key="", anthropic_api_key=""),
@@ -782,7 +790,7 @@ async def test_pipeline_without_api_key_fails_with_llm_unavailable() -> None:
         explorations=_FakeExplorations(),
     )
     ctx, _ = _context()
-    ctx.snapshot = _snapshot()
+    ctx.snapshot = _snapshot() if cached else None
 
     events = [event async for event in pipeline.run(message="统计员工有多少人", ctx=ctx)]
 
@@ -790,31 +798,100 @@ async def test_pipeline_without_api_key_fails_with_llm_unavailable() -> None:
     assert len(failure) == 1
     assert failure[0].code is ErrorCode.LLM_UNAVAILABLE
     assert llm.calls == []  # 一次模型调用都没发出去
+    load_schema.assert_not_awaited()
+    classify.assert_not_awaited()
+    assert ctx.query_count == 0
 
 
 @pytest.mark.asyncio
-async def test_pipeline_structure_fast_path_skips_the_model() -> None:
-    """结构类问题走快路径：直接用缓存作答，不调模型。"""
-    from dbchat.events.chat import AnswerDelta, RunFinished
+@pytest.mark.parametrize("available", [False, True])
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("visibility", ["tables", "empty", "filtered"])
+async def test_pipeline_structure_fast_path_skips_the_model(
+    monkeypatch: pytest.MonkeyPatch, available: bool, cached: bool, visibility: str
+) -> None:
+    """有无模型/缓存均可回答结构问题；空库和筛选后无表也要给出有效回答。"""
+    from dbchat.events.chat import AnswerDelta, RunFailed, RunFinished
     from dbchat.usecases.chat import ChatPipeline
 
-    llm = ScriptedLLM([[]])
+    llm = ScriptedLLM([[]], available=available, error=AssertionError("不应调用模型"))
+    classify = AsyncMock(side_effect=AssertionError("不应调用分类模型"))
+    monkeypatch.setattr("dbchat.usecases.chat.classify", classify)
+
+    def unexpected_exploration(*args: Any, **kwargs: Any):
+        raise AssertionError("结构问题不应启动探索")
+
+    monkeypatch.setattr("dbchat.usecases.onboarding.explore_database", unexpected_exploration)
+    snapshot = _snapshot()
+    if visibility == "empty":
+        snapshot.tables.clear()
+    load_schema = AsyncMock(return_value=snapshot)
+    monkeypatch.setattr("dbchat.usecases.onboarding.build_schema", load_schema)
+    explorations = _FakeExplorations(report="# 探索报告\n- 只有一张表")
+    monkeypatch.setattr(explorations, "ais_explored", AsyncMock(return_value=False))
     pipeline = ChatPipeline(
-        settings=Settings(llm_api_key="test-key"),
+        settings=Settings(_env_file=None, llm_api_key="test-key" if available else ""),
         llm=llm,
         registry=_registry_with_fake_query(),
-        explorations=_FakeExplorations(report="# 探索报告\n- 只有一张表"),
+        explorations=explorations,
     )
     ctx, _ = _context()
-    ctx.snapshot = _snapshot()
+    ctx.snapshot = snapshot if cached else None
+    if visibility == "filtered":
+        ctx.scope = CatalogScope(tables=frozenset())
 
     events = [event async for event in pipeline.run(message="数据库有哪些表？", ctx=ctx)]
 
     answer = "".join(event.text for event in events if isinstance(event, AnswerDelta))
-    assert "employee" in answer
-    assert "探索报告" in answer
+    if visibility == "tables":
+        assert "employee" in answer
+        assert "探索报告" in answer
+    else:
+        assert "**0** 张表" in answer
+        assert "表筛选" in answer
+        assert "employee" not in answer
+        assert "只有一张表" not in answer
     assert llm.calls == []
+    classify.assert_not_awaited()
+    assert explorations.saved == []
+    assert not any(isinstance(event, RunFailed) for event in events)
     assert isinstance(events[-1], RunFinished)
+    assert events[-1].answer_markdown == answer
+    assert events[-1].stats.queries == 0
+    if cached:
+        load_schema.assert_not_awaited()
+    else:
+        load_schema.assert_awaited_once()
+        assert ctx.snapshot is snapshot
+
+
+@pytest.mark.asyncio
+async def test_structure_without_model_reports_schema_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """没有模型时仍然保留数据库错误，不能把加载失败误报为空库或缺少模型。"""
+    from dbchat.domain.errors import DbError, DbErrorKind
+    from dbchat.events.base import ErrorCode
+    from dbchat.events.chat import RunFailed, RunFinished
+    from dbchat.usecases.chat import ChatPipeline
+
+    load_schema = AsyncMock(
+        side_effect=DbError(DbErrorKind.TIMEOUT, user_message="数据库结构加载超时")
+    )
+    monkeypatch.setattr("dbchat.usecases.onboarding.build_schema", load_schema)
+    pipeline = ChatPipeline(
+        settings=Settings(_env_file=None),
+        llm=ScriptedLLM([[]], available=False),
+        registry=_registry_with_fake_query(),
+        explorations=_FakeExplorations(),
+    )
+    ctx, _ = _context()
+
+    events = [event async for event in pipeline.run(message="数据库有哪些表？", ctx=ctx)]
+
+    load_schema.assert_awaited_once()
+    assert isinstance(events[-1], RunFailed)
+    assert events[-1].code is ErrorCode.DB_QUERY_FAILED
+    assert events[-1].message == "数据库结构加载超时"
+    assert not any(isinstance(event, RunFinished) for event in events)
 
 
 @pytest.mark.asyncio

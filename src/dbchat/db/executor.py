@@ -115,6 +115,7 @@ class SqlExecutor:
             scope=scope,
             # 多要一行作为截断探针。
             row_limit=limit + _TRUNCATION_PROBE,
+            allowed_schemas=self.dialect.query_schemas(self.profile),
         )
         if not outcome.ok:
             raise self._rejection(outcome)
@@ -140,11 +141,15 @@ class SqlExecutor:
         started = time.perf_counter()
 
         def _run() -> tuple[list[str], list[Mapping[str, object]]]:
-            with self._lease.cursor() as cursor:
-                cursor.execute(sql)
-                if cursor.description is None:
-                    return [], []
-                return cursor.column_names(), list(cursor.fetchall())
+            self.dialect.begin_read_only_query(self._lease.connection)
+            try:
+                with self._lease.cursor() as cursor:
+                    cursor.execute(sql)
+                    if cursor.description is None:
+                        return [], []
+                    return cursor.column_names(), list(cursor.fetchmany(limit + _TRUNCATION_PROBE))
+            finally:
+                self.dialect.end_read_only_query(self._lease.connection)
 
         try:
             columns, rows = await self._in_thread(_run)

@@ -71,20 +71,27 @@ async def ensure_schema(
     backgrounds: BackgroundExplorer | None = None,
     clarifications: Any | None = None,
     schema_store: Any | None = None,
+    rag: Any | None = None,
+    allow_exploration: bool = True,
 ) -> AsyncIterator[ChatEvent]:
     """确保 `ctx.snapshot` 可用（必要时先做首轮探索）。
 
     产出线上事件（探索期间的活动与阶段），并把快照写回 `ctx.snapshot`。
     调用方在耗尽这个生成器之后读 `ctx.snapshot`。
+    纯结构问题或无可用模型时只加载结构，不触发模型探索，也不标记为已探索。
     """
-    active_registry = registry or get_registry()
-    repository = explorations or get_exploration_repository()
-    explorer = backgrounds or get_background_explorer(settings)
-
     if ctx.snapshot is None and schema_store is not None:
         ctx.snapshot = await _cached_snapshot(schema_store, ctx)
     if ctx.snapshot is not None:
         return
+
+    if not allow_exploration or not llm.available:
+        ctx.snapshot = await build_schema(ctx, settings=settings, schema_store=schema_store)
+        return
+
+    active_registry = registry or get_registry()
+    repository = explorations or get_exploration_repository()
+    explorer = backgrounds or get_background_explorer(settings)
 
     try:
         explored = await repository.ais_explored(ctx.profile.id)
@@ -101,6 +108,7 @@ async def ensure_schema(
             explorations=repository,
             backgrounds=explorer,
             clarifications=clarifications,
+            rag=rag,
             schema_store=schema_store,
         ):
             yield event
@@ -216,6 +224,7 @@ async def explore_database(
     backgrounds: BackgroundExplorer,
     clarifications: Any | None = None,
     schema_store: Any | None = None,
+    rag: Any | None = None,
 ) -> AsyncIterator[ChatEvent]:
     """首轮探索：小库跑一轮 LLM 探索，大库走快速结构 + 后台补全。"""
     view = RunView(run_id=ctx.run_id, now=time.time())
@@ -276,6 +285,7 @@ async def explore_database(
         registry=registry,
         settings=settings,
         clarifications=clarifications,
+        rag=rag,
     )
     messages = [_explore_user_message(ctx)]
     async for event in run_agent_loop(spec, run, messages):

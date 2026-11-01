@@ -119,7 +119,7 @@ def build_structure_response(
     那份模型已经不存在了；取值分布改从 `ColumnMeta.sample_values` 读，
     数据来源与内省一致。
     """
-    if snapshot is None or not snapshot.table_count:
+    if snapshot is None:
         return ""
 
     scope = scope or CatalogScope()
@@ -129,7 +129,12 @@ def build_structure_response(
         else {name: meta for name, meta in snapshot.tables.items() if scope.allows(name)}
     )
     if not tables:
-        return ""
+        return (
+            f"## {snapshot.db_name} 数据库架构\n\n"
+            "当前可见范围内有 **0** 张表。请检查表筛选和数据库访问权限，"
+            "或确认数据库中是否已创建表。\n\n"
+            "*来源: 数据库 schema 缓存*"
+        )
 
     lines = [f"## {snapshot.db_name} 数据库架构\n"]
     lines.append(f"共 **{len(tables)}** 张表：\n")

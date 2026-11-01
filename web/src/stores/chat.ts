@@ -217,14 +217,17 @@ export function createChatStore(options: ChatStoreOptions = {}): ChatStore {
     const session = activeSession.value
     state.streaming = true
     state.lastError = null
-    controller = new AbortController()
+    const requestController = new AbortController()
+    controller = requestController
 
     let silenceTimer: ReturnType<typeof setTimeout> | null = null
     const armSilence = () => {
+      if (controller !== requestController || requestController.signal.aborted) return
       if (silenceTimer) clearTimeout(silenceTimer)
       silenceTimer = setTimeout(() => {
+        if (controller !== requestController || requestController.signal.aborted) return
         state.lastError = '长时间没有收到进展，已停止等待。'
-        controller?.abort()
+        requestController.abort()
       }, SILENCE_TIMEOUT_MS)
     }
     const disarmSilence = () => {
@@ -243,11 +246,13 @@ export function createChatStore(options: ChatStoreOptions = {}): ChatStore {
         },
         {
           onEvent: (event: ChatEvent) => {
+            if (controller !== requestController || requestController.signal.aborted) return
             armSilence()
             applyEvent(turn.run, event)
           },
           onHeartbeat: armSilence,
           onError: (error) => {
+            if (controller !== requestController) return
             const detail = error instanceof Error ? error.message : String(error)
             state.lastError = detail
             if (turn.run.status === 'running') {
@@ -261,13 +266,15 @@ export function createChatStore(options: ChatStoreOptions = {}): ChatStore {
             }
           },
         },
-        controller.signal,
+        requestController.signal,
       )
     } finally {
       disarmSilence()
-      const aborted = controller?.signal.aborted ?? false
-      state.streaming = false
-      controller = null
+      const aborted = requestController.signal.aborted
+      if (controller === requestController) {
+        state.streaming = false
+        controller = null
+      }
       turn.run.localLastEventAt = 0
       if (turn.run.status === 'running') {
         // 流结束了却没有 run.finished / run.failed：补一条可重试的收尾，

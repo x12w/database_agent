@@ -20,6 +20,7 @@ import pytest
 from fastapi.routing import APIRoute
 from pydantic import TypeAdapter
 
+from dbchat.api.auth import authorize
 from dbchat.api.failures import ApiFailure
 from dbchat.app import create_app
 from dbchat.config import Settings
@@ -251,7 +252,9 @@ def ctx(settings: Settings, storage: Storage, manager: FakeConnectionManager):
 
 @pytest.fixture
 def app(settings: Settings, ctx):
-    return create_app(settings, context=ctx, build_rag=False)
+    application = create_app(settings, context=ctx, build_rag=False)
+    application.dependency_overrides[authorize] = lambda: "admin"
+    return application
 
 
 @pytest.fixture
@@ -409,8 +412,7 @@ async def test_tables_lists_every_table(client: httpx.AsyncClient):
 
 async def test_table_filter_round_trip(client: httpx.AsyncClient):
     empty = await client.get("/api/session/sess-1/table-filter")
-    assert empty.status_code == 200
-    assert empty.json()["table_filter"] is None
+    assert empty.status_code == 404
 
     saved = await client.post("/api/session/sess-1/table-filter", json={"tables": ["students"]})
     assert saved.status_code == 200
@@ -463,6 +465,7 @@ async def test_missing_frontend_build_is_explained(settings: Settings, ctx):
     """前端没构建时给一句能照做的话，而不是 404 的 JSON。"""
     settings.web_dist_dir = settings.var_dir / "nope"
     application = create_app(settings, context=ctx, build_rag=False)
+    application.dependency_overrides[authorize] = lambda: "admin"
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=application), base_url="http://test"
     ) as client:
@@ -666,6 +669,8 @@ async def test_admin_routes_exist_exactly_once(app):
         "/api/admin/questions/{question_id}/answer",
         "/api/admin/questions/{question_id}/ignore",
         "/api/admin/explore-database",
+        "/api/admin/settings",
+        "/api/admin/settings/test-model",
     }
 
 

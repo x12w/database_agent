@@ -200,7 +200,6 @@ def test_row_limit_skipped_when_already_limited(snapshot: SchemaSnapshot) -> Non
         (MYSQL, "SELECT * FROM employee LIMIT 5"),
         (MYSQL, "SELECT * FROM employee LIMIT 5 OFFSET 10"),
         (PG, "SELECT * FROM employee LIMIT 5"),
-        (DM, "SELECT * FROM EMPLOYEE WHERE ROWNUM <= 5"),
         (DM, "SELECT * FROM EMPLOYEE FETCH FIRST 5 ROWS ONLY"),
     ):
         result = inspect(dialect, sql, snapshot=snapshot, row_limit=200)
@@ -232,30 +231,30 @@ def test_row_limit_not_applied_to_show(snapshot: SchemaSnapshot) -> None:
     assert result.limited is False
 
 
-# -------------------------------------------------------- 解析失败兜底
+# -------------------------------------------------------- 解析失败拒绝
 
 
-def test_parse_error_falls_back_and_never_rejects() -> None:
-    """解析失败必须退到保守路径，绝不能变成硬拒绝。"""
+def test_parse_error_is_rejected() -> None:
+    """解析失败必须拒绝执行，不能降级绕过安全校验。"""
     broken = "SELECT * FROM employee WHERE x IN ("
     result = inspect(MYSQL, broken, row_limit=200)
     assert result.fell_back is True
-    assert result.ok, "解析失败不该导致拒绝执行"
-    assert result.warnings, "兜底必须有提示"
-    assert "LIMIT 200" in result.sql
+    assert not result.ok
+    assert "无法可靠解析" in result.error_text()
+    assert result.sql == broken
 
 
-def test_parse_error_fallback_uses_dialect_limit_clause() -> None:
-    """兜底路径同样要遵守方言的限流写法（达梦得到 FETCH FIRST）。"""
+def test_parse_error_does_not_rewrite_dameng_sql() -> None:
+    """解析失败直接拒绝，不能拼接方言不支持的 LIMIT。"""
     broken = "SELECT * FROM EMPLOYEE WHERE X IN ("
     result = inspect(DM, broken, row_limit=200)
     assert result.fell_back is True
     assert "LIMIT" not in result.sql.upper()
-    assert result.sql.rstrip().endswith("FETCH FIRST 200 ROWS ONLY")
+    assert not result.ok
 
 
-def test_parse_error_fallback_does_not_invent_missing_tables(monkeypatch: pytest.MonkeyPatch) -> None:
-    """解析失败时"表不存在"降级为不报错 —— 解析不准不能变成硬拒绝。"""
+def test_parse_error_rejects_even_metadata_queries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """系统表查询也必须通过解析。"""
 
     def _boom(*args: Any, **kwargs: Any) -> Any:
         raise ParseError("模拟 sqlglot 不认识达梦的语法")
@@ -269,12 +268,12 @@ def test_parse_error_fallback_does_not_invent_missing_tables(monkeypatch: pytest
         row_limit=200,
     )
     assert result.fell_back is True
-    assert result.ok, result.errors
+    assert not result.ok
     assert "LIMIT" not in result.sql.upper()
 
 
-def test_parse_error_fallback_still_enforces_table_scope(monkeypatch: pytest.MonkeyPatch) -> None:
-    """兜底路径可以漏检存在性，但**表筛选范围**是安全控制，必须继续生效。"""
+def test_parse_error_cannot_bypass_table_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    """无法检查表范围的查询必须拒绝。"""
 
     def _boom(*args: Any, **kwargs: Any) -> Any:
         raise ParseError("模拟解析失败")
@@ -288,7 +287,7 @@ def test_parse_error_fallback_still_enforces_table_scope(monkeypatch: pytest.Mon
     )
     assert result.fell_back is True
     assert not result.ok
-    assert "secret_table" in result.error_text()
+    assert "无法可靠解析" in result.error_text()
 
 
 def _snapshot_without_dual() -> SchemaSnapshot:

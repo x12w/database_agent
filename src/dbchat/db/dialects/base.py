@@ -203,6 +203,18 @@ class Dialect(ABC):
         """连接后应当切入的 schema。"""
         return profile.database or None
 
+    def query_schemas(self, profile: DatabaseProfile) -> frozenset[str]:
+        """Explicit schema qualifiers that belong to this connection."""
+        return frozenset({profile.database}) if profile.database else frozenset()
+
+    def begin_read_only_query(self, conn: Connection) -> None:
+        """Session-default read-only mode is configured by MySQL/PostgreSQL."""
+        return
+
+    def end_read_only_query(self, conn: Connection) -> None:
+        """Dialect-specific transaction cleanup, called even on query failures."""
+        return
+
     # ---- 内省 SQL（全部返回可绑定 SQL）----
     @abstractmethod
     def sql_list_tables(self, scope: CatalogScope) -> BoundSQL:

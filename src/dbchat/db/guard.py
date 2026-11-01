@@ -10,12 +10,7 @@
    CTE 查询一行都不限，全表拉进内存。
 3. **注释剥离**用正则，`-- ` 与 `#` 的处理和字符串字面量互相干扰。
 
-这里用 sqlglot 解析成 AST 后处理（`find_all(exp.Table)` 取表、
-`tree.limit(n)` 加限流），并且带一条**强制安全阀**：
-
-    解析失败（`sqlglot.errors.ParseError`）绝不能变成"拒绝执行"。
-    达梦/Oracle 的 `ROWNUM`、`NVL`、`(+)` 外连接可能过不了 sqlglot，
-    这时退到保守的正则路径并记 warning —— 宁可漏检，不可误杀。
+SQL 无法可靠解析时拒绝执行，不能用正则降级绕过只读或表范围控制。
 """
 
 from __future__ import annotations
@@ -28,9 +23,11 @@ from typing import Any
 import sqlglot
 from sqlglot import exp
 from sqlglot.errors import ParseError
+from sqlglot.optimizer.scope import Scope, traverse_scope
 
 from dbchat.db.dialects.base import Dialect
 from dbchat.db.sqltext import first_keyword, mask_literals, split_statements, strip_comments
+from dbchat.domain.profile import DialectKind
 from dbchat.domain.schema import CatalogScope, SchemaSnapshot
 
 __all__ = [
@@ -46,21 +43,46 @@ logger = logging.getLogger(__name__)
 
 #: 写操作 / 危险函数。取自 `app/database/sql_validator.py:14-32`。
 FORBIDDEN_PATTERNS: tuple[str, ...] = (
-    r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b", r"\bDROP\b",
-    r"\bCREATE\b", r"\bALTER\b", r"\bTRUNCATE\b", r"\bRENAME\b",
-    r"\bGRANT\b", r"\bREVOKE\b", r"\bREPLACE\b", r"\bLOAD\b",
-    r"\bCALL\b", r"\bEXEC\b", r"\bEXECUTE\b", r"\bPREPARE\b",
-    r"\bFLUSH\b", r"\bSET\b", r"\bLOCK\b", r"\bUNLOCK\b",
-    r"\bKILL\b", r"\bSHUTDOWN\b", r"\bHANDLER\b",
+    r"\bINSERT\b",
+    r"\bUPDATE\b",
+    r"\bDELETE\b",
+    r"\bDROP\b",
+    r"\bCREATE\b",
+    r"\bALTER\b",
+    r"\bTRUNCATE\b",
+    r"\bRENAME\b",
+    r"\bGRANT\b",
+    r"\bREVOKE\b",
+    r"\bREPLACE\b",
+    r"\bLOAD\b",
+    r"\bCALL\b",
+    r"\bEXEC\b",
+    r"\bEXECUTE\b",
+    r"\bPREPARE\b",
+    r"\bFLUSH\b",
+    r"\bSET\b",
+    r"\bLOCK\b",
+    r"\bUNLOCK\b",
+    r"\bKILL\b",
+    r"\bSHUTDOWN\b",
+    r"\bHANDLER\b",
     r"\bINTO\s+(OUTFILE|DUMPFILE)\b",
-    r"\bSLEEP\s*\(.*?\)", r"\bBENCHMARK\s*\(.*?\)",
+    r"\bSLEEP\s*\(.*?\)",
+    r"\bBENCHMARK\s*\(.*?\)",
     r"\bWAITFOR\s+DELAY\b",
-    r"\bVACUUM\b", r"\bREINDEX\b", r"\bDISCARD\b",
-    r"\bCOPY\b", r"\bNOTIFY\b", r"\bLISTEN\b",
+    r"\bVACUUM\b",
+    r"\bREINDEX\b",
+    r"\bDISCARD\b",
+    r"\bCOPY\b",
+    r"\bNOTIFY\b",
+    r"\bLISTEN\b",
     r"\bREFRESH\s+MATERIALIZED\b",
     r"\bpg_sleep\s*\(.*?\)",
-    r"\bpg_read_file\b", r"\bpg_write_file\b", r"\bpg_read_binary_file\b",
-    r"\blo_import\b", r"\blo_export\b",
+    r"\bpg_read_file\b",
+    r"\bpg_write_file\b",
+    r"\bpg_read_binary_file\b",
+    r"\blo_import\b",
+    r"\blo_export\b",
 )
 
 _FORBIDDEN_COMPILED: tuple[re.Pattern[str], ...] = tuple(
@@ -78,41 +100,61 @@ _SCALAR_FUNCTION_WORDS = frozenset({"REPLACE"})
 SYSTEM_RELATION_NAMES: frozenset[str] = frozenset(
     {
         # Oracle / 达梦
-        "all_tables", "all_tab_columns", "all_tab_comments", "all_col_comments",
-        "all_constraints", "all_cons_columns", "all_indexes", "all_ind_columns",
-        "all_views", "all_users", "all_objects", "all_sequences", "all_tab_partitions",
-        "user_tables", "user_tab_columns", "user_constraints", "user_cons_columns",
-        "user_indexes", "user_ind_columns", "user_views", "user_users", "user_objects",
-        "dba_tables", "dba_tab_columns", "dba_constraints",
+        "all_tables",
+        "all_tab_columns",
+        "all_tab_comments",
+        "all_col_comments",
+        "all_constraints",
+        "all_cons_columns",
+        "all_indexes",
+        "all_ind_columns",
+        "all_views",
+        "all_users",
+        "all_objects",
+        "all_sequences",
+        "all_tab_partitions",
+        "user_tables",
+        "user_tab_columns",
+        "user_constraints",
+        "user_cons_columns",
+        "user_indexes",
+        "user_ind_columns",
+        "user_views",
+        "user_users",
+        "user_objects",
+        "dba_tables",
+        "dba_tab_columns",
+        "dba_constraints",
         "dual",
         # MySQL
-        "information_schema", "mysql", "performance_schema", "sys",
+        "information_schema",
+        "mysql",
+        "performance_schema",
+        "sys",
         # PostgreSQL
-        "pg_catalog", "pg_tables", "pg_indexes", "pg_class", "pg_namespace",
-        "pg_attribute", "pg_constraint", "pg_stat_user_tables", "pg_views",
-        "pg_proc", "pg_type", "pg_description", "pg_settings",
+        "pg_catalog",
+        "pg_tables",
+        "pg_indexes",
+        "pg_class",
+        "pg_namespace",
+        "pg_attribute",
+        "pg_constraint",
+        "pg_stat_user_tables",
+        "pg_views",
+        "pg_proc",
+        "pg_type",
+        "pg_description",
+        "pg_settings",
         # SQLite（历史遗留，保留以免破坏性变更）
-        "sqlite_master", "sqlite_sequence",
+        "sqlite_master",
+        "sqlite_sequence",
     }
 )
 
-#: 已经带限流的写法 —— 文本兜底路径用它判断"还需不需要补"。
-_ROW_LIMIT_PATTERN = re.compile(r"\b(LIMIT|FETCH|ROWNUM|TOP)\b", re.IGNORECASE)
-_AGGREGATE_ONLY_PATTERN = re.compile(r"\bCOUNT\s*\(\s*\*", re.IGNORECASE)
-_GROUP_BY_PATTERN = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
 _SELECT_STAR_PATTERN = re.compile(r"\bSELECT\s+\*", re.IGNORECASE)
 
-#: 保守兜底用的表名正则：引号形式与裸标识符都认，并允许 schema 限定。
-_TABLE_REF_PATTERN = re.compile(
-    r"\b(?:FROM|JOIN)\s+"
-    r"(?P<name>(?:\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)"
-    r"(?:\s*\.\s*(?:\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*))*)"
-    r"(?:\s+(?:AS\s+)?(?P<alias>[A-Za-z_][\w$]*))?",
-    re.IGNORECASE,
-)
-
 #: 加了限流之后仍要保留的可比对面（用于确认 AST 重写没改坏查询）。
-_STRUCTURE_SQL_ARGS = ("from", "joins", "where", "group", "having", "order", "qualify")
+_STRUCTURE_SQL_ARGS = ("from_", "joins", "where", "group", "having", "order", "qualify")
 
 
 @dataclass(slots=True, frozen=True)
@@ -122,6 +164,7 @@ class TableRef:
     name: str
     schema: str | None = None
     alias: str | None = None
+    catalog: str | None = None
     #: 指向 CTE 定义而非真实表。
     is_cte: bool = False
     #: 系统对象（系统 schema 限定，或命中系统关系名）。
@@ -142,7 +185,7 @@ class GuardResult:
     tables: list[TableRef] = field(default_factory=list)
     #: 是否自动补了行数上限。
     limited: bool = False
-    #: 是否走了"解析失败 -> 保守正则"的兜底路径。
+    #: 是否出现解析失败（兼容诊断字段；现在一律拒绝执行）。
     fell_back: bool = False
 
     @property
@@ -163,6 +206,7 @@ def inspect(
     snapshot: SchemaSnapshot | None = None,
     scope: CatalogScope | None = None,
     row_limit: int | None = None,
+    allowed_schemas: frozenset[str] | None = None,
 ) -> GuardResult:
     """校验一条待执行的 SQL，并返回可能被改写过的语句。
 
@@ -194,32 +238,146 @@ def inspect(
         result.errors.append("SQL 去掉注释后为空")
         return result
 
+    if first_keyword(cleaned) not in dialect.allowed_leading_keywords:
+        _check_read_only(dialect, cleaned, result)
+        return result
+
+    # Normalize shorthand before AST validation. EXPLAIN ANALYZE is deliberately
+    # rejected because it actually executes its target.
+    if first_keyword(cleaned) == "TABLE":
+        cleaned = "SELECT * FROM " + cleaned[5:].strip()
+    if first_keyword(cleaned) == "EXPLAIN":
+        inner = cleaned[7:].strip()
+        if first_keyword(inner) not in {"SELECT", "WITH"}:
+            result.errors.append("只支持 EXPLAIN SELECT/WITH（不允许 ANALYZE）")
+            return result
+        checked = inspect(
+            dialect,
+            inner,
+            snapshot=snapshot,
+            scope=scope,
+            row_limit=row_limit,
+            allowed_schemas=allowed_schemas,
+        )
+        checked.sql = "EXPLAIN " + checked.sql
+        return checked
+
     _check_read_only(dialect, cleaned, result)
     if result.errors:
         return result
 
-    limited_sql, limited, fell_back = _apply_row_limit(dialect, cleaned, row_limit)
+    tree = _parse(dialect, cleaned)
+    if tree is None:
+        result.fell_back = True
+        result.errors.append("SQL 无法可靠解析，请改写为受支持的只读查询")
+        return result
+    _check_ast_read_only(tree, result)
+    if result.errors:
+        return result
+
+    try:
+        limited_sql, limited, fell_back = _apply_row_limit(dialect, cleaned, row_limit)
+        refs = extract_table_refs(dialect, limited_sql)
+    except (ValueError, sqlglot.errors.SqlglotError) as exc:
+        result.errors.append(f"无法安全分析或限制查询: {exc}")
+        return result
     result.sql = limited_sql
     result.limited = limited
     result.fell_back = fell_back
-    if fell_back:
-        result.warnings.append("SQL 无法被解析器识别，已按保守策略处理（未做结构校验）")
-
-    refs = extract_table_refs(dialect, result.sql)
     result.tables = refs
+    schemas = (
+        allowed_schemas
+        if allowed_schemas is not None
+        else frozenset({snapshot.db_name} if snapshot else ())
+    )
+    for ref in refs:
+        if ref.is_cte:
+            continue
+        if ref.catalog or (
+            ref.schema
+            and not ref.is_system
+            and ref.schema.lower() not in {s.lower() for s in schemas}
+        ):
+            result.errors.append(f"不允许跨数据库或未授权 schema 访问: {ref.qualified}")
+        if (
+            ref.is_system
+            and ref.schema
+            and (
+                ref.schema.lower() not in {"information_schema", "pg_catalog", "sys"}
+                or (
+                    ref.schema.lower() != "information_schema"
+                    and ref.name.lower() not in SYSTEM_RELATION_NAMES
+                )
+            )
+        ):
+            result.errors.append(f"不允许访问系统数据表: {ref.qualified}")
 
-    if fell_back:
-        # 解析失败时只做**表范围**检查（这是安全控制），
-        # 存在性检查降级为提示 —— 解析不准的错误不能变成硬拒绝。
-        _check_scope_only(refs, scope, result)
-    else:
-        _check_tables(refs, snapshot, scope, result)
-        _check_columns(result.sql, dialect, refs, snapshot, result)
+    _check_tables(refs, snapshot, scope, result)
+    _check_columns(result.sql, dialect, refs, snapshot, result)
 
     if _SELECT_STAR_PATTERN.search(mask_literals(result.sql)):
         result.warnings.append("使用了 SELECT *，建议只选择需要的列以提高效率")
 
     return result
+
+
+# Unknown/UDF functions are not a read-only boundary. Allow only known AST
+# builtins plus a small set of documented scalar/metadata functions.
+_SAFE_ANONYMOUS = frozenset(
+    {
+        "DATABASE",
+        "SCHEMA",
+        "CURRENT_SCHEMA",
+        "CURRENT_DATABASE",
+        "VERSION",
+        "TO_CHAR",
+        "TO_DATE",
+        "TO_TIMESTAMP",
+        "NVL",
+        "DECODE",
+        "FORMAT",
+        "PG_GET_EXPR",
+        "PG_GET_CONSTRAINTDEF",
+        "PG_GET_INDEXDEF",
+        "PG_TABLE_IS_VISIBLE",
+        "OBJ_DESCRIPTION",
+        "COL_DESCRIPTION",
+    }
+)
+_UNSAFE_FUNCTIONS = frozenset(
+    {
+        "LOAD_FILE",
+        "SETVAL",
+        "NEXTVAL",
+        "NEXT_VALUE_FOR",
+        "SLEEP",
+        "PG_SLEEP",
+        "BENCHMARK",
+        "PG_READ_FILE",
+        "PG_READ_BINARY_FILE",
+        "LO_IMPORT",
+        "LO_EXPORT",
+    }
+)
+
+
+def _check_ast_read_only(tree: exp.Expression, result: GuardResult) -> None:
+    if not isinstance(tree, (exp.Query, exp.Show, exp.Describe)):
+        result.errors.append("只允许可解析的只读查询")
+        return
+    for node in tree.walk():
+        if isinstance(node, (exp.DDL, exp.DML, exp.Into, exp.Lock, exp.Command)):
+            result.errors.append("SQL 包含写入或锁定操作")
+            return
+        if isinstance(node, exp.Func):
+            name = node.name.upper() if isinstance(node, exp.Anonymous) else node.sql_name().upper()
+            if (
+                name in _UNSAFE_FUNCTIONS
+                or isinstance(node.parent, exp.Dot)
+                or (isinstance(node, exp.Anonymous) and name not in _SAFE_ANONYMOUS)
+            ):
+                result.errors.append(f"不允许未确认只读的函数: {name}")
+                return
 
 
 def _check_read_only(dialect: Dialect, cleaned: str, result: GuardResult) -> None:
@@ -247,26 +405,12 @@ def _check_read_only(dialect: Dialect, cleaned: str, result: GuardResult) -> Non
         if match is None:
             continue
         word = match.group(0).strip()
-        if word.upper() in _SCALAR_FUNCTION_WORDS and haystack[match.end() :].lstrip().startswith("("):
+        if word.upper() in _SCALAR_FUNCTION_WORDS and haystack[match.end() :].lstrip().startswith(
+            "("
+        ):
             continue
         result.errors.append(f"语句包含被禁止的模式: {word}")
         return
-
-
-def _check_scope_only(
-    refs: list[TableRef], scope: CatalogScope | None, result: GuardResult
-) -> None:
-    """兜底路径：只强制表筛选范围。"""
-    if scope is None or scope.tables is None:
-        return
-    for ref in refs:
-        if ref.is_cte or ref.is_system:
-            continue
-        if not scope.allows(ref.name):
-            result.errors.append(
-                f"表 '{ref.name}' 不在允许的表筛选列表中。允许的表: "
-                f"{', '.join(sorted(scope.tables))}"
-            )
 
 
 def _check_tables(
@@ -290,9 +434,7 @@ def _check_tables(
         if snapshot.resolve_table_name(ref.name) is None:
             available = sorted(snapshot.tables)[:10]
             suffix = "..." if snapshot.table_count > 10 else ""
-            result.errors.append(
-                f"表 '{ref.name}' 不存在。可用表: {', '.join(available)}{suffix}"
-            )
+            result.errors.append(f"表 '{ref.name}' 不存在。可用表: {', '.join(available)}{suffix}")
 
 
 def _check_columns(
@@ -397,80 +539,46 @@ def _select_aliases(tree: exp.Expression) -> set[str]:
 def extract_table_refs(dialect: Dialect, sql: str) -> list[TableRef]:
     """取出 SQL 引用到的所有表。
 
-    优先走 AST（`find_all(exp.Table)`）：能正确处理引号形式、schema 限定、
-    CTE 遮蔽与别名。解析失败时走保守正则，只认它认得准的部分。
+    使用 AST 与 SQL 作用域区分真实表和 CTE；无法解析时拒绝继续。
     """
     tree = _parse(dialect, sql)
     if tree is None:
-        return _regex_table_refs(dialect, sql)
+        raise ValueError("无法解析表引用")
 
-    cte_names = {cte.alias.lower() for cte in tree.find_all(exp.CTE) if cte.alias}
+    cte_nodes: set[int] = set()
+    for query_scope in traverse_scope(tree):
+        for node, source in query_scope.selected_sources.values():
+            if isinstance(source, Scope) and isinstance(node, exp.Table):
+                cte_nodes.add(id(node))
     refs: list[TableRef] = []
-    seen: set[tuple[str, str | None, str | None]] = set()
     for node in tree.find_all(exp.Table):
-        name = node.name
-        if not name:
+        if not node.name:
             continue
-        schema = node.db or None
-        alias = node.alias or None
-        key = (name.lower(), schema.lower() if schema else None, alias.lower() if alias else None)
-        if key in seen:
-            continue
-        seen.add(key)
         refs.append(
             TableRef(
-                name=name,
-                schema=schema,
-                alias=alias,
-                is_cte=name.lower() in cte_names and not schema,
-                is_system=_is_system(dialect, name, schema),
+                name=node.name,
+                schema=node.db or None,
+                catalog=node.catalog or None,
+                alias=node.alias or None,
+                is_cte=id(node) in cte_nodes,
+                is_system=_is_system(dialect, node.name, node.db or None),
             )
         )
     return refs
-
-
-def _regex_table_refs(dialect: Dialect, sql: str) -> list[TableRef]:
-    """保守兜底：只认 `FROM/JOIN <标识符>` 里的第一个标识符。
-
-    认不准的（子查询、逗号连接的表清单）宁可不认 —— 漏检比误杀安全。
-    """
-    from dbchat.db.sqltext import split_qualified_name
-
-    haystack = mask_literals(strip_comments(sql))
-    refs: list[TableRef] = []
-    seen: set[str] = set()
-    for match in _TABLE_REF_PATTERN.finditer(haystack):
-        raw = match.group("name")
-        schema, name = split_qualified_name(raw)
-        if not name or name.upper() in _SQL_NOISE:
-            continue
-        key = f"{schema}.{name}".lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        alias = match.group("alias")
-        refs.append(
-            TableRef(
-                name=name,
-                schema=schema,
-                alias=alias,
-                is_system=_is_system(dialect, name, schema),
-            )
-        )
-    return refs
-
-
-#: 不该被当成表名的关键字（`FROM (SELECT ...)` / `JOIN LATERAL` 之类）。
-_SQL_NOISE = frozenset(
-    {"select", "lateral", "unnest", "values", "generate_series", "json_table", "dual"}
-)
 
 
 def _is_system(dialect: Dialect, name: str, schema: str | None) -> bool:
     """系统对象判定：schema 限定走方言，未限定走共享名单。"""
-    if schema and schema.lower() in {s.lower() for s in dialect.system_schemas}:
-        return True
-    return name.lower() in SYSTEM_RELATION_NAMES
+    if schema:
+        return schema.lower() in {s.lower() for s in dialect.system_schemas}
+    name = name.lower()
+    if name not in SYSTEM_RELATION_NAMES:
+        return False
+    if dialect.kind == DialectKind.POSTGRESQL:
+        return name.startswith("pg_") and name != "pg_catalog"
+    if dialect.kind == DialectKind.DAMENG:
+        return name == "dual" or name.startswith(("all_", "user_", "dba_"))
+    return name == "dual"
 
 
 # ------------------------------------------------------------------ 限流
@@ -487,65 +595,65 @@ def _apply_row_limit(dialect: Dialect, sql: str, row_limit: int | None) -> tuple
 
     tree = _parse(dialect, sql)
     if tree is None:
-        # 安全阀：解析失败绝不等于拒绝执行。退回文本追加，
-        # 追加用的仍是方言自己的 limit_clause（达梦得到 FETCH FIRST）。
-        logger.warning("sqlglot 无法解析该 SQL，改用文本方式补行数上限: %s", sql[:200])
-        if _has_limit_text(sql) or _is_aggregate_only(sql):
-            return sql, False, True
-        return dialect.apply_row_limit(sql, row_limit), True, True
+        raise ValueError("无法解析行数限制")
 
-    if not _needs_limit(tree, sql):
+    if not _needs_limit(tree, row_limit):
         return sql, False, False
 
     try:
         rewritten = tree.limit(row_limit).sql(dialect=dialect.sqlglot_name)
-    except Exception as exc:  # noqa: BLE001 - 重渲染失败退文本路径，不放弃查询
-        logger.warning("AST 补行数上限失败，改用文本方式: %s: %s", type(exc).__name__, exc)
-        return dialect.apply_row_limit(sql, row_limit), True, True
-
+    except Exception as exc:
+        raise ValueError("无法生成有界查询") from exc
     if not _same_query(tree, dialect, rewritten):
-        # 重渲染把查询改样了（sqlglot 对某些方言语法会做有损转换）：
-        # 宁可退回"原句 + 限流子句"，也不要执行一条被悄悄改写的 SQL。
-        logger.warning("AST 重渲染改变了查询结构，退回文本方式追加限流: %s", sql[:200])
-        return dialect.apply_row_limit(sql, row_limit), True, False
+        raise ValueError("补充行数上限改变了查询结构")
+
     return rewritten, True, False
 
 
 def _parse(dialect: Dialect, sql: str) -> exp.Expression | None:
     """解析 SQL；失败返回 None（并且只记 warning，不抛）。"""
     try:
+        statements = sqlglot.parse(sql, read=dialect.sqlglot_name)
+        if len(statements) != 1:
+            return None
         return sqlglot.parse_one(sql, read=dialect.sqlglot_name)
     except ParseError as exc:
         logger.warning("sqlglot 解析失败 (%s): %s", dialect.sqlglot_name, exc)
         return None
-    except Exception as exc:  # noqa: BLE001 - 解析器内部异常同样不能变成拒绝
-        logger.warning("sqlglot 解析异常 (%s): %s: %s", dialect.sqlglot_name, type(exc).__name__, exc)
+    except Exception as exc:  # noqa: BLE001 - 解析器异常也必须拒绝执行
+        logger.warning(
+            "sqlglot 解析异常 (%s): %s: %s", dialect.sqlglot_name, type(exc).__name__, exc
+        )
         return None
 
 
-def _needs_limit(tree: exp.Expression, sql: str) -> bool:
-    """是否需要补限流。"""
+def _needs_limit(tree: exp.Expression, row_limit: int) -> bool:
     if not isinstance(tree, (exp.Select, exp.Union, exp.Except, exp.Intersect, exp.Subquery)):
-        # SHOW / EXPLAIN / DESCRIBE 之类不需要（也不能）加 LIMIT。
         return False
-    if tree.args.get("limit") is not None or tree.args.get("offset") is not None:
-        return False
-    if isinstance(tree, exp.Select) and (tree.args.get("top") is not None):
-        return False
-    if _has_limit_text(sql):
-        # 形如 `WHERE ROWNUM <= 10` 的写法 sqlglot 不一定建模成 limit。
-        return False
-    return not _is_aggregate_only(sql)
-
-
-def _has_limit_text(sql: str) -> bool:
-    return bool(_ROW_LIMIT_PATTERN.search(mask_literals(sql)))
-
-
-def _is_aggregate_only(sql: str) -> bool:
-    """`SELECT COUNT(*) FROM t` 这类天然只返回一行，不必再限流。"""
-    haystack = mask_literals(sql)
-    return bool(_AGGREGATE_ONLY_PATTERN.search(haystack)) and not _GROUP_BY_PATTERN.search(haystack)
+    limit = tree.args.get("limit")
+    if limit is not None:
+        count = limit.args.get("expression") or limit.args.get("count")
+        options = limit.args.get("limit_options")
+        plain = options is None or not (
+            options.args.get("percent") or options.args.get("with_ties")
+        )
+        return not (
+            plain
+            and isinstance(count, exp.Literal)
+            and count.is_int
+            and 0 <= int(count.this) <= row_limit
+        )
+    # A column named ROWNUM is not a portable bound; always cap the outer query.
+    # Only a top-level aggregate without grouping/windows is guaranteed to be one row.
+    if isinstance(tree, exp.Select) and not tree.args.get("group") and not tree.find(exp.Window):
+        expressions = [e.unalias() for e in tree.expressions]
+        if (
+            expressions
+            and all(isinstance(e, (exp.AggFunc, exp.Literal)) for e in expressions)
+            and any(isinstance(e, exp.AggFunc) for e in expressions)
+        ):
+            return False
+    return True
 
 
 def _same_query(before: exp.Expression, dialect: Dialect, rewritten: str) -> bool:

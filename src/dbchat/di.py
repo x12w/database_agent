@@ -132,6 +132,8 @@ class AppContext:
 
     async def list_profiles(self) -> list[DatabaseProfile]:
         """全部连接配置（空表时用 .env 的默认配置初始化一份）。"""
+        if self.settings.desktop_mode:
+            return await self.profiles.alist_all()
         return await self.profiles.aensure_default(self.settings.default_profile())
 
     async def resolve_profile(self, profile_id: str | None) -> DatabaseProfile:

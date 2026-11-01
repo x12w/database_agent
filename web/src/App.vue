@@ -2,11 +2,13 @@
 import AdminView from './views/AdminView.vue'
 import ChatView from './views/ChatView.vue'
 import FixtureView from './views/FixtureView.vue'
+import SettingsView from './views/SettingsView.vue'
 import { route } from './router.ts'
 </script>
 
 <template>
   <ChatView v-if="route === '/'" />
   <AdminView v-else-if="route === '/admin'" />
+  <SettingsView v-else-if="route === '/settings'" />
   <FixtureView v-else />
 </template>

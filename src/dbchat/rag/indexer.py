@@ -101,6 +101,7 @@ class RAGIndexer:
         )
         self._clarifications_provider = clarifications_provider
         self._state = IndexState()
+        self._admin_states: dict[str, IndexState] = {}
         # 写者互斥；读者不取锁，只读一次引用。
         self._lock = threading.RLock()
 
@@ -108,7 +109,7 @@ class RAGIndexer:
 
     @property
     def ready(self) -> bool:
-        return self._state.ready
+        return self._state.ready or any(state.ready for state in self._admin_states.values())
 
     @property
     def state(self) -> IndexState:
@@ -135,7 +136,7 @@ class RAGIndexer:
             doc_paths: 覆盖构造时的文档语料。
             admin_doc: 已拼好的管理员问答 markdown；None 表示按
                 `profile_id` 现取。传空字符串表示"这次不要管理员语料"。
-            profile_id: 只纳入该 profile 的管理员问答；None 表示全部。
+            profile_id: 仅纳入指定数据库的管理员问答；None 不纳入管理员语料。
             force: 忽略磁盘缓存，强制重新编码。
 
         Returns:
@@ -182,12 +183,19 @@ class RAGIndexer:
         *,
         force: bool = True,
     ) -> bool:
-        """纳入管理员问答后重建索引。
+        """立即替换指定数据库的管理员知识（关键词索引，不混入公共向量索引）。
 
-        管理员刚给出新答案时必须真正重建（`force=True`），否则指纹未变
-        （问答内容变了但文档没变时指纹会变，这里只是防止调用方误用缓存）。
+        空文档会清除旧答案。force 参数保留以兼容原接口，每次调用均替换。
         """
-        return self.build(admin_doc=admin_doc, profile_id=profile_id, force=force)
+        if not profile_id:
+            raise ValueError("管理员知识必须绑定数据库配置")
+        if admin_doc is None:
+            admin_doc = self._clarifications_text(profile_id) if profile_id else ""
+        chunks = tuple(chunk_markdown(admin_doc, self._settings.rag_chunk_size, self._settings.rag_chunk_overlap))
+        state = IndexState(chunks=chunks, fallback=True, ready=bool(chunks))
+        with self._lock:
+            self._admin_states = {**self._admin_states, profile_id: state}
+        return state.ready
 
     async def abuild(
         self,
@@ -222,7 +230,14 @@ class RAGIndexer:
 
     # ---- 检索 ----
 
-    def search(self, query: str, top_k: int | None = None) -> list[tuple[str, float]]:
+    def search(self, query: str, top_k: int | None = None, *, profile_id: str | None = None) -> list[tuple[str, float]]:
+        limit = max(1, top_k if top_k is not None else self._settings.rag_top_k)
+        admin = self._admin_states.get(profile_id) if profile_id else None
+        hits = _keyword_search(admin.chunks, query, limit) if admin and admin.ready else []
+        hits.extend(self._search_base(query, limit))
+        return hits[:limit]
+
+    def _search_base(self, query: str, top_k: int | None = None) -> list[tuple[str, float]]:
         """检索最相关的片段，返回 `[(片段, 分数), ...]`。
 
         分数口径：向量检索是归一化内积（余弦相似度）；关键词检索是词命中数
@@ -275,7 +290,7 @@ class RAGIndexer:
                 parts.append(text)
 
         if admin_doc is None:
-            admin_doc = self._clarifications_text(profile_id)
+            admin_doc = self._clarifications_text(profile_id) if profile_id else ""
         if admin_doc and admin_doc.strip():
             parts.append(admin_doc)
 

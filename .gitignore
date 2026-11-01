@@ -29,3 +29,9 @@ web/dist/
 .idea/
 .vscode/
 .DS_Store
+
+# ---- desktop build ----
+desktop/node_modules/
+desktop/runtime/
+desktop/release/
+desktop/test-results/

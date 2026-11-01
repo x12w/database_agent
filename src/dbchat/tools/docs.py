@@ -69,7 +69,7 @@ async def search_documentation(params: SearchDocsParams, ctx: ToolContext) -> To
     if not query:
         return ToolOutcome.failure("未提供搜索查询", content="错误：未提供搜索查询。")
 
-    chunks = await aretrieve_chunks(query)
+    chunks = await aretrieve_chunks(query, indexer=ctx.rag, profile_id=ctx.profile_id) if ctx.rag is not None else []
     if not chunks:
         return ToolOutcome(
             ok=True,

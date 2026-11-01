@@ -92,6 +92,7 @@ class MySQLDialect(Dialect):
                 connect_timeout=timeout_s,
                 cursorclass=pymysql.cursors.DictCursor,
                 autocommit=True,
+                init_command="SET SESSION TRANSACTION READ ONLY",
             )
         except Exception as exc:
             kind = self.classify_error(exc)
@@ -327,4 +328,3 @@ class MySQLDialect(Dialect):
             "取当前库的表清单可查 information_schema.TABLES；MySQL 支持 SHOW TABLES 与 DESCRIBE 表名。",
             "MySQL 里空串 '' 与 NULL 是两个不同的值，判空用 IS NULL。",
         )
-

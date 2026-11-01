@@ -1,0 +1,60 @@
+{
+  "name": "dbchat-desktop",
+  "version": "0.5.0",
+  "private": true,
+  "description": "dbchat 桌面数据库查询助手",
+  "author": "dbchat contributors",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "node scripts/launch.cjs",
+    "test": "node --test test/*.test.cjs",
+    "test:app": "node scripts/smoke.cjs",
+    "build:ui": "npm --prefix ../web run build",
+    "prepare:runtime": "../venv/bin/python scripts/prepare_runtime.py",
+    "pack": "npm run build:ui && npm run prepare:runtime && electron-builder --linux dir",
+    "dist": "npm run pack && ../venv/bin/python scripts/archive.py"
+  },
+  "devDependencies": {
+    "electron": "43.6.0",
+    "electron-builder": "^26.0.12",
+    "playwright": "^1.58.0"
+  },
+  "build": {
+    "appId": "org.dbchat.desktop",
+    "productName": "dbchat",
+    "asar": true,
+    "files": [
+      "*.cjs",
+      "package.json",
+      "scripts/launch.cjs",
+      "assets/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "backend"
+      },
+      {
+        "from": "../web/dist",
+        "to": "ui"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "linux": {
+      "target": [
+        "tar.gz"
+      ],
+      "category": "Development",
+      "executableName": "dbchat",
+      "icon": "assets/icon.png"
+    },
+    "extraFiles": [
+      {
+        "from": "scripts/start-linux.sh",
+        "to": "start-dbchat.sh"
+      }
+    ]
+  }
+}

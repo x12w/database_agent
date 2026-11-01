@@ -18,12 +18,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import anyio
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from dbchat.api import build_router
+from dbchat.api.auth import authorize
 from dbchat.api.failures import ApiFailure, single_frame
 from dbchat.config import Settings, get_settings
 from dbchat.di import AppContext, build_context
@@ -62,6 +63,7 @@ def create_app(
     ctx = context or build_context(s)
 
     app = FastAPI(
+        dependencies=[Depends(authorize)],
         title="dbchat · 智能查询助手",
         description="用中文提问，Agent 自主查库并回答",
         version="0.4.0",
@@ -75,7 +77,7 @@ def create_app(
         # 只有开发模式放开跨域：Vite dev server（5173）要直连这个服务。
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
             allow_credentials=False,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -145,7 +147,10 @@ def _start_rag_build(ctx: AppContext) -> None:
 
     async def build() -> None:
         try:
-            await ctx.rag.abuild()
+            await ctx.rag.abuild(admin_doc="")
+            for profile in await ctx.list_profiles():
+                doc = await ctx.clarifications.abuild_rag_document(profile.id)
+                await ctx.rag.abuild_admin_index(doc, profile.id)
         except Exception as exc:  # noqa: BLE001 - 索引不可用不该让服务起不来
             logger.warning("RAG 索引构建失败（非致命，将退回关键词检索）: %s: %s", type(exc).__name__, exc)
         else:

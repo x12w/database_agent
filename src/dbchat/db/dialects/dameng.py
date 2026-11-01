@@ -167,6 +167,20 @@ class DamengDialect(Dialect):
             log_ping_failure(conn, exc)
             return False
 
+    def begin_read_only_query(self, conn: Any) -> None:
+        # SET TRANSACTION applies to one transaction; do not leave a stale
+        # snapshot open between queries. A failed setup must prevent execution.
+        conn.autocommit = False
+        conn.rollback()
+        cur = conn.cursor()
+        try:
+            cur.execute("SET TRANSACTION READ ONLY")
+        finally:
+            cur.close()
+
+    def end_read_only_query(self, conn: Any) -> None:
+        conn.rollback()
+
     def create_cursor(self, conn: Any) -> Any:
         """达梦返回元组行，形状由 `normalize_row` 按 description 归一。"""
         return conn.cursor()

@@ -6,9 +6,10 @@ import { ref, type Ref } from 'vue'
  * 只有三条路径，用不着引 vue-router；`history.pushState` 够用，
  * 后端把这三条路径都回落到 index.html 即可。
  */
-export type RoutePath = '/' | '/admin' | '/dev'
+export type RoutePath = '/' | '/admin' | '/dev' | '/settings'
 
 function normalize(path: string): RoutePath {
+  if (path.startsWith('/settings')) return '/settings'
   if (path.startsWith('/admin')) return '/admin'
   if (path.startsWith('/dev')) return '/dev'
   return '/'

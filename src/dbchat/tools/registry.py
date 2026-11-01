@@ -208,6 +208,7 @@ class ToolContext:
     #: 管理员问答仓储。API 层自己持有一份（`AppContext.clarifications`），
     #: 注入进来可以让工具与路由读写同一个对象，而不是各自开一条 SQLite 连接。
     clarifications: Any | None = None
+    rag: Any | None = None
 
     @property
     def profile_id(self) -> str:

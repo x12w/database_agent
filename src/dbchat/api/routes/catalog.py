@@ -102,6 +102,14 @@ async def _session(
     """
     if not session_id.strip():
         raise HTTPException(status_code=400, detail="缺少会话 id")
+    existing = await ctx.conversations.aget(session_id)
+    if existing is not None:
+        if sync:
+            await ctx.conversations.aset_table_filter(session_id, table_filter)
+            return await ctx.conversations.aget(session_id)
+        return existing
+    if not sync:
+        raise HTTPException(status_code=404, detail="会话不存在")
     profile = await ctx.resolve_profile(None)
     return await ensure_conversation(
         ctx,

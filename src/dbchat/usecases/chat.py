@@ -7,8 +7,8 @@
 
 * **limited mode**（`:230-248` 与整个 `_limited_mode_response` / `_generate_sql` /
   `_fallback_sql` / `_format_limited_response` 家族，`:1826-2100`）—— 那套模板 SQL
-  只对培训考试库有意义，换个库就会自信地返回错误答案。现在没有 API key 直接以
-  `llm_unavailable` 失败。
+  只对培训考试库有意义，换个库就会自信地返回错误答案。现在数据查询没有 API key
+  直接以 `llm_unavailable` 失败；纯结构问题仍可读取结构快照作答。
 * **legacy agent**（`_run_legacy_agent`，`:1149`）—— 没有任何调用点。
 * **查询次数的事件名判断**（`:354`）—— 见 `tools/database.py`。
 
@@ -72,6 +72,7 @@ from dbchat.events.chat import (
 from dbchat.events.project import RunView, project
 from dbchat.llm.client import LLMClient, get_llm_client
 from dbchat.llm.messages import assistant_message, user_message
+from dbchat.rag.indexer import RAGIndexer
 from dbchat.rag.retriever import aretrieve_context
 from dbchat.storage.explorations import ExplorationRepository, get_exploration_repository
 from dbchat.tools import ToolRegistry, get_registry
@@ -124,6 +125,7 @@ class ChatPipeline:
         explorations: ExplorationRepository | None = None,
         clarifications: Any | None = None,
         schema_store: Any | None = None,
+        rag: RAGIndexer | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._llm = llm or get_llm_client()
@@ -133,6 +135,7 @@ class ChatPipeline:
         self._clarifications = clarifications
         #: 结构快照缓存（可选）。API 层可能已经放了一份在 ctx.snapshot 上。
         self._schema_store = schema_store
+        self._rag = rag or RAGIndexer(self._settings, doc_paths=[])
 
     # ------------------------------------------------------------ 入口
 
@@ -156,6 +159,7 @@ class ChatPipeline:
             registry=self._registry,
             settings=self._settings,
             clarifications=self._clarifications,
+            rag=self._rag,
         )
 
         yield RunStarted(
@@ -175,6 +179,16 @@ class ChatPipeline:
             # ---- 阶段 1：理解问题（结构加载 + 时间解析 + 分类）----
             started = time.monotonic()
             yield self._stage_start(view, Stage.UNDERSTANDING, "加载数据库结构并分析问题")
+            structure_only = is_structure_question(message)
+            # 数据问题需要模型；先检查配置，避免无意义的连接、内省和探索。
+            if not structure_only and not self._llm.available:
+                yield self._fail(
+                    view,
+                    "llm_unavailable",
+                    "未配置可用的模型服务，请在 .env 中设置 LLM_API_KEY",
+                )
+                return
+
             async for event in ensure_schema(
                 ctx,
                 settings=self._settings,
@@ -183,10 +197,24 @@ class ChatPipeline:
                 registry=self._registry,
                 clarifications=self._clarifications,
                 schema_store=self._schema_store,
+                allow_exploration=not structure_only,
+                rag=self._rag,
             ):
                 yield event
             if ctx.snapshot is None:
                 raise DbError(DbErrorKind.UNKNOWN, user_message="无法读取数据库结构")
+
+            # 结构问题只读快照：首次连接也不调用分类模型或探索 agent。
+            # 空快照同样是有效结果，由结构回答解释当前可见范围。
+            if structure_only:
+                yield self._stage_end(
+                    view, Stage.UNDERSTANDING, True, self._understanding_summary(ctx), started
+                )
+                async for event in self._structure_answer(view, ctx, answer_parts):
+                    yield event
+                yield self._finished(view, ctx, "".join(answer_parts))
+                return
+
             temporal = resolve_temporal_context(message)
             classification = await classify(message, llm=self._llm)
             logger.info(
@@ -197,22 +225,6 @@ class ChatPipeline:
             yield self._stage_end(
                 view, Stage.UNDERSTANDING, True, self._understanding_summary(ctx), started
             )
-
-            # ---- 没有可用模型：直接失败（不再退回模板 SQL）----
-            if not self._llm.available:
-                yield self._fail(
-                    view,
-                    "llm_unavailable",
-                    "未配置可用的模型服务，请在 .env 中设置 LLM_API_KEY",
-                )
-                return
-
-            # ---- 结构问题快路径：直接用缓存回答 ----
-            if is_structure_question(message) and ctx.snapshot and ctx.snapshot.table_count:
-                async for event in self._structure_answer(view, ctx, answer_parts):
-                    yield event
-                yield self._finished(view, ctx, "".join(answer_parts))
-                return
 
             # ---- 阶段 2：多轮迭代（分析 → 查询 → 评估）----
             async for event in self._query_rounds(view, ctx, run, message, temporal.text):
@@ -318,7 +330,7 @@ class ChatPipeline:
                         build_analysis_user_message(
                             question,
                             history_block=build_analysis_history_block(ctx.history),
-                            rag_context=await self._rag_context(question),
+                            rag_context=await self._rag_context(question, ctx.profile.id),
                             prior_findings=plan if retry else "",
                             retry=retry,
                         )
@@ -357,7 +369,9 @@ class ChatPipeline:
                     continue
                 logger.warning("查询轮次已用尽且最后一轮失败: %s", error[1])
                 yield self._stage_end(view, Stage.QUERYING, False, "查询失败", round_started)
-                return
+                failure = DbChatError(error[1], detail=error[2])
+                failure.code = error[0]
+                raise failure
 
             # ---- 评估（缺陷修复 #2：把"这一轮到底查没查"喂进去）----
             evaluation = await evaluate_results(
@@ -404,8 +418,12 @@ class ChatPipeline:
                 run_agent_loop(spec, run, [user_message("请对以上查询结果进行计算处理。")]),
             ):
                 yield event
-            _take_error(run)
-            yield self._stage_end(view, Stage.COMPUTING, True, "计算阶段结束", started)
+            error = _take_error(run)
+            yield self._stage_end(view, Stage.COMPUTING, error is None, "计算失败" if error else "计算阶段结束", started)
+            if error:
+                failure = DbChatError(error[1], detail=error[2])
+                failure.code = error[0]
+                raise failure
 
         if plan.needs_chart:
             started = time.monotonic()
@@ -427,8 +445,12 @@ class ChatPipeline:
                 ),
             ):
                 yield event
-            _take_error(run)
-            yield self._stage_end(view, Stage.VISUALIZING, True, "图表阶段结束", started)
+            error = _take_error(run)
+            yield self._stage_end(view, Stage.VISUALIZING, error is None, "绘图失败" if error else "图表阶段结束", started)
+            if error:
+                failure = DbChatError(error[1], detail=error[2])
+                failure.code = error[0]
+                raise failure
             for artifact in ctx.artifacts:
                 yield ArtifactCreated(
                     seq=view.next_seq(),
@@ -488,9 +510,9 @@ class ChatPipeline:
             if mapped is not None:
                 yield mapped
 
-    async def _rag_context(self, question: str) -> str:
+    async def _rag_context(self, question: str, profile_id: str | None = None) -> str:
         try:
-            return await aretrieve_context(question, top_k=3)
+            return await aretrieve_context(question, top_k=3, indexer=self._rag, profile_id=profile_id)
         except Exception as exc:  # noqa: BLE001 - 检索失败不该阻断分析
             logger.info("RAG 检索失败: %s: %s", type(exc).__name__, exc)
             return ""
@@ -586,6 +608,7 @@ def build_chat_use_case(ctx: Any) -> ChatPipeline:
         explorations=ctx.explorations,
         clarifications=getattr(ctx, "clarifications", None),
         schema_store=getattr(ctx, "schema_store", None),
+        rag=getattr(ctx, "rag", None),
     )
 
 

@@ -67,7 +67,8 @@ function onSelect(event: Event): void {
 
       <button type="button" class="btn-ghost" title="新建会话" @click="$emit('newChat')">＋</button>
       <button type="button" class="btn-ghost" title="重建数据库缓存" @click="$emit('rebuild')">⟳</button>
-      <button type="button" class="btn-ghost" title="管理面板" @click="navigate('/admin')">⚙</button>
+      <button type="button" class="btn-ghost" @click="navigate('/admin')">知识管理</button>
+      <button type="button" class="btn-ghost" title="应用设置" @click="navigate('/settings')">设置</button>
     </div>
   </header>
 </template>

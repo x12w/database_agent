@@ -50,6 +50,7 @@ class AgentRun:
     cancel: CancelToken | None = None
     #: 管理员问答仓储（见 `ToolContext.clarifications`）。
     clarifications: Any | None = None
+    rag: Any | None = None
     #: agent 之间的旁路数据（见模块 docstring）。
     state: dict[str, Any] = field(default_factory=dict)
 
@@ -66,6 +67,7 @@ class AgentRun:
             llm=self.llm,
             cancel=self.cancel,
             clarifications=self.clarifications,
+            rag=self.rag,
         )
 
     def record_tool(self, tool: str, outcome: ToolOutcome) -> None:

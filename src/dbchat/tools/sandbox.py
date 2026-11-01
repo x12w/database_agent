@@ -9,8 +9,8 @@
    分配照样跑到底；
 3. 受限内建函数是**进程级共享**的，`_lazy_module_cache` 也是全局可变状态。
 
-这里换成子进程：工作目录在子进程里设置，超时用 `asyncio.wait_for` +
-`proc.kill()` 硬杀，内存/CPU 用 `resource.setrlimit` 兜底。副作用全部
+强制使用 bubblewrap 的文件系统、进程与网络命名空间隔离；无隔离环境时拒绝执行。
+超时或取消会终止进程组，内存/CPU/文件大小用 `resource.setrlimit` 限制。输出
 落在临时目录，图表产出后再搬进 `Settings.artifacts_dir`。
 
 模块白名单语义（`_PRELOADED_MODULES` / `_LAZY_MODULES` / `_restricted_import`）
@@ -26,6 +26,8 @@ import logging
 import math
 import os
 import shutil
+import signal
+import stat
 import sys
 import tempfile
 import time
@@ -120,6 +122,9 @@ try:
     resource.setrlimit(resource.RLIMIT_CPU, (_cpu, _cpu + 1))
     if _ADDR_LIMIT > 0:
         resource.setrlimit(resource.RLIMIT_AS, (_ADDR_LIMIT, _ADDR_LIMIT))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (32 * 1024 * 1024, 32 * 1024 * 1024))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+    resource.setrlimit(resource.RLIMIT_NPROC, (32, 32))
 except Exception as _exc:  # noqa: BLE001 - 拿不到 rlimit 不算致命，超时兜底仍在
     sys.stderr.write("sandbox: rlimit unavailable: %r\n" % (_exc,))
 
@@ -270,6 +275,11 @@ async def run_python_code(
         `SandboxResult`。**不抛异常** —— 沙箱失败也是一种结果。
     """
     started = time.perf_counter()
+    # Python object introspection defeats builtins allowlists. Only run untrusted
+    # code inside a mandatory OS namespace sandbox; never fall back to plain Python.
+    bwrap = shutil.which("bwrap")
+    if bwrap is None or sys.platform != "linux":
+        return SandboxResult(ok=False, error="计算隔离环境不可用：需要 Linux 和 bubblewrap")
     workdir = Path(tempfile.mkdtemp(prefix="dbchat-sandbox-"))
     payload_path = workdir / "_payload.json"
     out_path = workdir / "_result.json"
@@ -290,8 +300,9 @@ async def run_python_code(
     proc: asyncio.subprocess.Process | None = None
     timed_out = False
     try:
+        command = await anyio.to_thread.run_sync(_isolation_command, bwrap, workdir)
         proc = await asyncio.create_subprocess_exec(
-            sys.executable,
+            *command,
             "-c",
             PYTHON_BOOTSTRAP,
             str(payload_path),
@@ -301,15 +312,23 @@ async def run_python_code(
             str(int(address_space_bytes)),
             cwd=str(workdir),
             env=env,
-            stdout=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         try:
-            await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+            process_stderr = await asyncio.wait_for(_wait_with_stderr(proc), timeout=timeout_s)
         except TimeoutError:
             timed_out = True
-            proc.kill()
+            os.killpg(proc.pid, signal.SIGKILL)
             await proc.wait()
+        except asyncio.CancelledError:
+            with anyio.CancelScope(shield=True):
+                if proc.returncode is None:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                await proc.wait()
+                await anyio.to_thread.run_sync(_rmtree, workdir)
+            raise
     except Exception as exc:  # noqa: BLE001 - 起进程失败也要变成结果
         logger.warning("启动计算沙箱失败: %s: %s", type(exc).__name__, exc, exc_info=True)
         await anyio.to_thread.run_sync(_rmtree, workdir)
@@ -334,7 +353,7 @@ async def run_python_code(
             return SandboxResult(
                 ok=False,
                 error="Python 代码执行失败（子进程未返回结果）",
-                error_detail=f"exit_code={proc.returncode}",
+                error_detail=f"exit_code={proc.returncode}: {process_stderr.decode(errors="replace")[-2000:]}",
                 execution_ms=_elapsed_ms(started),
             )
 
@@ -357,6 +376,36 @@ async def run_python_code(
         await anyio.to_thread.run_sync(_rmtree, workdir)
 
 
+async def _wait_with_stderr(proc: asyncio.subprocess.Process) -> bytes:
+    """Drain diagnostic output without letting untrusted writes grow parent RAM."""
+    tail = b""
+    assert proc.stderr is not None
+    while chunk := await proc.stderr.read(8192):
+        tail = (tail + chunk)[-2000:]
+    await proc.wait()
+    return tail
+
+
+def _isolation_command(bwrap: str, workdir: Path) -> list[str]:
+    """Expose only runtime dependencies and this job's writable directory."""
+    command = [
+        bwrap, "--unshare-all", "--unshare-user", "--die-with-parent", "--new-session",
+        "--disable-userns", "--cap-drop", "ALL", "--proc", "/proc",
+        "--dev", "/dev", "--tmpfs", "/tmp",
+    ]
+    # Mount Python/venv at their original paths to preserve pyvenv.cfg and .so RPATHs.
+    runtime_paths = {
+        sys.base_prefix, sys.prefix, str(Path(sys.executable).resolve().parent.parent),
+        "/nix/store", "/usr/lib", "/usr/lib64", "/lib", "/lib64",
+        "/usr/share/fonts", "/etc/fonts",
+    }
+    for path in sorted(runtime_paths, key=lambda p: (len(p), p)):
+        if Path(path).exists():
+            command.extend(["--ro-bind", path, path])
+    command.extend(["--bind", str(workdir), str(workdir), "--chdir", str(workdir), str(Path(sys.executable).resolve())])
+    return command
+
+
 def _sandbox_env(workdir: Path) -> dict[str, str]:
     """子进程环境变量。
 
@@ -372,10 +421,16 @@ def _sandbox_env(workdir: Path) -> dict[str, str]:
         "MPLCONFIGDIR": str(config_dir),
         # 保持与父进程一致的库搜索路径（NixOS 上 numpy/matplotlib 依赖它）
         "PYTHONHASHSEED": "0",
+        "PYTHONPATH": str(Path(sys.prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"),
         "LANG": os.environ.get("LANG", "C.UTF-8"),
         "LC_ALL": os.environ.get("LC_ALL", ""),
         "PYTHONIOENCODING": "utf-8",
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
     }
+    nix_loader = Path("/run/current-system/sw/share/nix-ld/lib/ld.so")
+    if nix_loader.exists():
+        env["NIX_LD"] = str(nix_loader.resolve())
     if os.environ.get("LD_LIBRARY_PATH"):
         env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
     return env
@@ -390,10 +445,14 @@ def _write_text(path: Path, payload: str) -> None:
 
 
 def _read_result(out_path: Path) -> dict | None:
-    if not out_path.exists():
+    if not out_path.exists() or out_path.is_symlink():
         return None
     try:
-        return json.loads(out_path.read_text(encoding="utf-8"))
+        info = out_path.stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 4 * 1024 * 1024:
+            return None
+        result = json.loads(out_path.read_text(encoding="utf-8"))
+        return result if isinstance(result, dict) else None
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("读取沙箱结果失败: %s: %s", type(exc).__name__, exc)
         return None
@@ -408,6 +467,8 @@ def _collect_artifacts(workdir: Path, artifacts_dir: Path) -> tuple[Artifact, ..
     try:
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         for source in sorted(glob.glob(str(workdir / "*.png"))):
+            if Path(source).is_symlink() or not Path(source).is_file():
+                continue
             name = _unique_name(artifacts_dir, Path(source).name)
             target = artifacts_dir / name
             shutil.move(source, target)

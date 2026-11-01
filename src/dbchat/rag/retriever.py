@@ -31,12 +31,13 @@ def retrieve_chunks(
     top_k: int | None = None,
     *,
     indexer: RAGIndexer | None = None,
+    profile_id: str | None = None,
 ) -> list[tuple[str, float]]:
     """检索相关文档片段，返回 `[(片段, 分数), ...]`。索引未就绪时返回空。"""
     active = indexer or get_indexer()
     if not active.ready:
         return []
-    return active.search(query, top_k)
+    return active.search(query, top_k, profile_id=profile_id)
 
 
 async def aretrieve_chunks(
@@ -44,9 +45,10 @@ async def aretrieve_chunks(
     top_k: int | None = None,
     *,
     indexer: RAGIndexer | None = None,
+    profile_id: str | None = None,
 ) -> list[tuple[str, float]]:
     """`retrieve_chunks` 的异步版本。"""
-    return await anyio.to_thread.run_sync(partial(retrieve_chunks, query, top_k, indexer=indexer))
+    return await anyio.to_thread.run_sync(partial(retrieve_chunks, query, top_k, indexer=indexer, profile_id=profile_id))
 
 
 def retrieve_context(
@@ -54,9 +56,10 @@ def retrieve_context(
     top_k: int | None = None,
     *,
     indexer: RAGIndexer | None = None,
+    profile_id: str | None = None,
 ) -> str:
     """检索并把片段拼成可直接塞进提示词的 markdown。"""
-    chunks = retrieve_chunks(query, top_k, indexer=indexer)
+    chunks = retrieve_chunks(query, top_k, indexer=indexer, profile_id=profile_id)
     if not chunks:
         return ""
 
@@ -73,9 +76,10 @@ async def aretrieve_context(
     top_k: int | None = None,
     *,
     indexer: RAGIndexer | None = None,
+    profile_id: str | None = None,
 ) -> str:
     """`retrieve_context` 的异步版本。"""
-    chunks = await aretrieve_chunks(query, top_k, indexer=indexer)
+    chunks = await aretrieve_chunks(query, top_k, indexer=indexer, profile_id=profile_id)
     if not chunks:
         return ""
     parts = ["## 相关文档内容\n"]
